@@ -115,7 +115,7 @@ O Dockerfile atual copia `app/`, mas não a pasta `tests/`; portanto, os testes 
 
 A documentação distingue o que está **implementado**, o que está **conceitualmente decidido** e o que segue **pendente**.
 
-## Documentação e uso de IA
+## Uso de IA
 
 - [ADR-001 — Arquitetura de Pedidos e Estoque](docs/adr/ADR-001-arquitetura-pedidos-estoque.md)
 - [ADR-002 — Organização do FastAPI](docs/adr/ADR-002-organizacao-fastapi.md)
