@@ -8,6 +8,9 @@ services:
     environment:
       DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-erp}:${POSTGRES_PASSWORD:-local_dev_only_change_me}@postgres:5432/${POSTGRES_DB:-erp}"
       REDIS_URL: "redis://redis:6379/0"
+      REQUEST_TIMEOUT: "${REQUEST_TIMEOUT:-2.0}"
+      MAX_ATTEMPTS: "${MAX_ATTEMPTS:-3}"
+      BACKOFF_BASE: "${BACKOFF_BASE:-0.5}"
     depends_on:
       postgres:
         condition: service_healthy
