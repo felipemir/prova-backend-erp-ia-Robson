@@ -85,3 +85,24 @@ Registro do raciocínio: [ADR-002](docs/adr/ADR-002-organizacao-fastapi.md).
 - [Uso de IA — Transparência e responsabilidades](docs/USO-DE-IA.md)
 
 Utilizei o ChatGPT para questionamentos, estudo, exploração de alternativas e apoio à escrita dos documentos. Minhas decisões e mudanças de direção estão registradas nos ADRs. As próximas etapas de implementação e testes serão documentadas conforme forem realizadas.
+
+## Ambiente local com Docker Compose
+
+Pré-requisito: Docker Engine/Desktop com o plugin Compose. Na raiz do projeto:
+
+```bash
+docker compose up
+```
+
+O Compose construirá a imagem na primeira execução e iniciará FastAPI, PostgreSQL, Redis e o worker RQ. Para reconstruir depois de alterar dependências: `docker compose up --build`.
+
+- Swagger: http://localhost:8000/docs
+- Saúde da API: http://localhost:8000/health
+- PostgreSQL: localhost:5433 (alterável por `POSTGRES_PORT`)
+- Redis: acessível somente entre containers
+
+Os valores padrão são apenas para **desenvolvimento local** e permitem subir sem configurar nada antes. Para personalizar, copie `.env.example` para `.env`, ajuste as variáveis e não versione esse arquivo. Não utilize as credenciais de exemplo fora do ambiente local. Uma senha alterada após a inicialização do volume do PostgreSQL não atualiza automaticamente as credenciais já criadas.
+
+Use `docker compose ps` para verificar os containers e `docker compose down` para desligar. Os dados ficam em volumes Docker; `docker compose down -v` **remove os volumes e seus dados**.
+
+O worker já escuta a fila `default`, mas tarefas do domínio, migrações e seed serão implementadas nas etapas seguintes. O healthcheck da API valida apenas a resposta HTTP, não a conectividade com banco e Redis. O ambiente está preparado para a implementação; o CRUD ainda não está implementado.

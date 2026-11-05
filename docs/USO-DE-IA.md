@@ -61,3 +61,7 @@ As propostas conceituais não devem ser confundidas com componentes implementado
 O uso de IA nas próximas etapas de programação, testes, depuração e documentação deverá ser registrado conforme realmente ocorrer.
 
 A revisão técnica, a validação das decisões e a responsabilidade pelo material submetido permanecem comigo.
+
+### Preparação da infraestrutura Docker
+
+Usei o ChatGPT para estruturar os arquivos de Docker/Compose e as configurações de FastAPI, PostgreSQL, Redis e worker RQ. A decisão de antecipar a conteinerização e exigir inicialização via `docker compose up` foi minha. A execução real dos containers e os testes de integração serão registrados quando forem realizados no meu ambiente.
