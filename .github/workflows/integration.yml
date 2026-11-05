@@ -1,0 +1,28 @@
+name: ERP integration
+
+on:
+  push:
+    branches:
+      - feat/products-stock-crud
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start the environment
+        run: docker compose up -d --build --wait
+      - name: Verify migrations and idempotent seed
+        run: |
+          docker compose run --rm init
+          docker compose exec -T postgres psql -U erp -d erp -c 'select count(*) from products;'
+      - name: Run unit and integration tests inside Docker
+        run: docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=150
+      - name: Stop containers
+        if: always()
+        run: docker compose down
