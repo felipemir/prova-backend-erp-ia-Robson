@@ -2,7 +2,7 @@
 
 Resolução da prova técnica de Back-end e Inteligência Artificial aplicada a um cenário de ERP. A implementação segue uma proposta modular em FastAPI, com decisões documentadas em Architecture Decision Records (ADRs).
 
-> **Estado atual:** Questões 1, 2 e 3 documentadas; Questão 4 implementada; Questão 6 implementada nesta branch e aguardando validação de integração com Docker/PostgreSQL/Redis. A suíte local de regras de estoque passou (4 testes, cobrindo 14 cenários); a pipeline GitHub Actions foi configurada, mas sua execução ainda não foi confirmada. Questões 8 a 11 seguem pendentes.
+> **Estado atual (05/11/2026):** Questões 1–3 documentadas; Questão 4 implementada; Questão 6 implementada e validada nos fluxos principais com PostgreSQL, Redis, RQ e Postman; Questão 7 validada por reinicialização do ambiente com `docker compose up`. Após consolidação, **17 testes passaram**, conforme execução local informada pelo autor (incluindo 4 testes de regras que percorrem 14 cenários). O workflow GitHub Actions está configurado, sem confirmação independente do resultado remoto. Questões 8–11 ainda pendentes.
 
 ## Parte 1 — Arquitetura e organização (Questões 1 e 2)
 
@@ -21,7 +21,7 @@ Detalhes, alternativas e justificativas: [ADR-001](docs/adr/ADR-001-arquitetura-
 
 Optei por uma **organização por domínio e camadas**, inspirada na separação de responsabilidades que conheço do Java/Spring, mas adaptada aos recursos do FastAPI. Em operações com persistência, a direção é **Router → Service → Repository → ORM/PostgreSQL**, com schemas Pydantic. Não crio Repository quando não existe acesso a banco, como no resumo simulado da Questão 4.
 
-A estrutura atual inclui `app/core/`, `app/modules/products/`, `app/modules/stock/`, `app/modules/orders/`, `app/integrations/`, `app/workers/` e `tests/`. Os arquivos de Produtos e Estoque ainda são bases para a implementação posterior do CRUD.
+A estrutura atual inclui `app/core/`, `app/modules/products/`, `app/modules/stock/`, `app/modules/orders/`, `app/modules/auth/`, `app/modules/employees/`, `app/integrations/`, `app/workers/` e `tests/`. Os módulos de Produtos e Estoque já implementam a API, a classificação de estoque e a integração com o worker.
 
 Justificativas: [ADR-002](docs/adr/ADR-002-organizacao-fastapi.md).
 
@@ -68,7 +68,7 @@ Para reconstruir a imagem após mudanças em dependências ou código:
 docker compose up --build
 ```
 
-O Compose inicia quatro serviços: **API FastAPI/Uvicorn**, **PostgreSQL 16**, **Redis 7** e **worker RQ** (escutando a fila `default`, ainda sem tarefas de domínio).
+O Compose define **seis serviços**: `postgres` (PostgreSQL 16), `redis` (Redis 7), `init` (migração Alembic + seed), `api` (FastAPI/Uvicorn), `worker` (RQ, fila `default`, processando alertas de estoque) e `ready` (mensagem de conclusão). `init` e `ready` são serviços de execução única; seu encerramento com código 0 é esperado.
 
 Endereços locais com portas padrão:
 
@@ -94,21 +94,23 @@ docker compose exec api printenv REQUEST_TIMEOUT MAX_ATTEMPTS BACKOFF_BASE
 docker compose down
 ```
 
-O healthcheck atual confirma somente a resposta HTTP da API, não uma conexão efetiva com PostgreSQL ou Redis. O comando `docker compose down` preserva volumes; **`docker compose down -v` apaga os volumes de dados**.
+O healthcheck da API confirma a resposta HTTP, sem testar diretamente PostgreSQL ou Redis. O Compose aguarda os healthchecks do PostgreSQL e Redis antes do serviço `init`. O serviço `ready` aguarda `api: service_healthy` e `worker: service_started` e imprime **`PROJETO INICIALIZADO CORRETAMENTE E PRONTO PARA TESTES`**; isso não garante, isoladamente, que o worker processou uma tarefa. Esse processamento foi validado separadamente. O comando `docker compose down` preserva volumes; **`docker compose down -v` apaga os volumes de dados**.
 
 ### Testes
 
-Com Python e as dependências de `requirements.txt` instalados no ambiente local, execute na raiz:
+A suíte pode ser executada com Python e as dependências instaladas ou **dentro da infraestrutura Compose** (com o ambiente já iniciado):
 
 ```bash
 python -m pytest -q
+# Ou, usando o PostgreSQL/Redis já iniciados:
+docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q
 ```
 
-O Dockerfile atual copia `app/`, mas não a pasta `tests/`; portanto, os testes não estão incluídos na imagem da API por padrão. Não se deve interpretar a inicialização bem-sucedida dos containers como evidência de que a suíte de testes passou.
+O Dockerfile não copia `tests/` por padrão; o comando acima monta a pasta somente para testes. **Resultado local informado após a refatoração: 17 testes aprovados.** O arquivo `test_stock_rules.py` contém 4 funções que verificam 14 cenários; a quantidade de testes coletados pelo pytest não é a quantidade de cenários percorridos. A execução não substitui a análise de casos não cobertos.
 
 ## Parte 3 — Produtos, Estoque e JWT (Questão 6)
 
-> Implementação publicada na branch de desenvolvimento. Os testes com serviços reais devem ser confirmados na pipeline ou no Docker local antes de considerar a entrega validada.
+> Implementação validada manualmente no ambiente Docker local (PostgreSQL, Redis, RQ, autenticação e CRUD) e pela suíte local informada com 17 testes aprovados. A execução remota no GitHub Actions continua sem confirmação independente.
 
 - **Produtos:** `POST /products`, `GET /products`, `GET /products/{id}`, `PATCH /products/{id}` e `DELETE /products/{id}` (exclusivo de administrador).
 - **Cadastro:** quantidade inicial de 12 ou mais; nome textual; preço Decimal não negativo.
@@ -138,14 +140,16 @@ curl -X POST http://localhost:8000/auth/login \
 
 Os campos de cadastro de funcionários e as credenciais iniciais são demonstrativos, não um sistema completo de gestão de identidade.
 
-**Testes:** `python -m pytest -q tests/test_stock_rules.py` (4 testes cobrindo 14 cenários, aprovados localmente). A pipeline `.github/workflows/integration.yml` tenta construir o Compose, aplicar novamente migration e seed e executar toda a suíte dentro da rede Docker. O sucesso da execução remota deve ser verificado separadamente.
+**Evidências locais (05/11/2026):** com Postman, foram verificados login de admin e funcionário (`200`), acesso sem token (`401`), CRUD de produto e exclusão restrita ao administrador (`403` para funcionário, `204` para admin e `404` após exclusão), cadastro abaixo de 12 unidades (`422`), classificação de estoque, filtros por nome/preço/estoque baixo e paginação. O Redis apresentou uma chave preenchida após `GET /products/{id}` e ausência da chave após o PATCH (consistente com invalidação, mas o TTL também poderia explicar ausência tardia). O RQ recebeu e processou alertas reais, persistidos em `stock_alerts`; a alteração dentro da mesma faixa não gerou alerta. A primeira tentativa de alerta falhou porque a tabela `products` não estava registrada no metadata do worker; o import do modelo foi corrigido e as transições posteriores funcionaram. Após a refatoração, o autor informou **17 testes aprovados** no pytest.
+
+**CI:** `.github/workflows/integration.yml` constrói o Compose, executa novamente init/seed e a suíte. Ainda não há resultado remoto confirmado. **Limitação de histórico:** a exclusão física de produto aciona `ON DELETE CASCADE` e remove alertas associados; isso deve ser considerado para evolução/auditoria.
 
 Decisões técnicas: [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md).
 
 ## Próximas etapas
 
-- **Questão 6:** implementação pronta para revisão e testes de integração; corrigir falhas identificadas pela CI, se houver.
-- **Questão 7:** confirmar Docker Compose, Alembic, seed, banco, fila e saúde do ambiente em execução real.
+- **Questão 6:** principais fluxos testados no ambiente real; revisar limitações conhecidas e acompanhar a execução remota da CI.
+- **Questão 7:** a inicialização do zero com `docker compose up`, healthchecks, Alembic e seed foi verificada no Linux; acompanhar a execução remota da CI e manter documentação coerente.
 - **Questões 8 e 9:** agente local para consultas em linguagem natural e explicação de uma integração futura com LLM, tool calls/MCP e controles de segurança.
 - **Questões 10 e 11:** proposta conceitual em Go, portfólio e reflexão final.
 
@@ -156,6 +160,7 @@ A documentação distingue o que está **implementado**, o que está **conceitua
 - [ADR-001 — Arquitetura de Pedidos e Estoque](docs/adr/ADR-001-arquitetura-pedidos-estoque.md)
 - [ADR-002 — Organização do FastAPI](docs/adr/ADR-002-organizacao-fastapi.md)
 - [ADR-003 — Concorrência e resiliência](docs/adr/ADR-003-concorrencia-resiliencia.md)
+- [ADR-004 — Produtos, Estoque, JWT e inicialização](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md)
 - [Uso de IA — Registro de apoio e responsabilidades](docs/USO-DE-IA.md)
 
 Utilizei o ChatGPT para estudo, questionamentos, alternativas de arquitetura, redação de documentos, propostas de implementação, testes e revisão. As escolhas e revisões estão registradas nos ADRs, e os resultados de testes somente serão declarados quando efetivamente verificados.
