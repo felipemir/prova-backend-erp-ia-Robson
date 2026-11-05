@@ -259,7 +259,7 @@ BACKOFF_BASE: "${BACKOFF_BASE:-0.5}"
 
 Com isso, o Compose passa a fornecer os valores configurados ao processo Python. A implementação mantém valores padrão para desenvolvimento local.
 
-**Ponto ainda pendente:** o `.env.example` continua sem documentar essas três variáveis. Embora isso não impeça a configuração atual de funcionar, considero uma pequena melhoria necessária para facilitar o uso do projeto.
+**Pendência resolvida na revisão da documentação:** atualizei o `.env.example` para incluir `REQUEST_TIMEOUT`, `MAX_ATTEMPTS` e `BACKOFF_BASE`, com os valores padrão e explicações sobre suas finalidades. Essa alteração não modifica a política de retry já implementada; apenas deixa sua configuração local explícita para quem executar o projeto.
 
 A verificação efetiva dos valores dentro do container após a última alteração também deve ser confirmada na execução local.
 
@@ -392,8 +392,8 @@ Esse é o comportamento que procurei representar na versão revisada da Questão
 
 A implementação revisada está publicada na branch `feat/base-fastapi`. Os quatro pontos principais levantados na revisão receberam ajustes no código.
 
-Ainda faltam registrar a execução integral dos testes da versão atualizada, confirmar o comportamento efetivo das variáveis no container e complementar o `.env.example`.
+A documentação do `.env.example` já foi complementada. Ainda faltam registrar a execução integral dos testes da versão atualizada e confirmar o comportamento efetivo das variáveis no container.
 
 Essas pendências não alteram as decisões arquiteturais descritas neste documento, mas precisam ser consideradas antes de afirmar que a validação final está concluída.
 
-Depois dessa confirmação, considero que poderemos encerrar a Questão 4 e avançar para a implementação real de Produtos e Estoque da Questão 6.
+A Questão 4 fica mantida como implementação concluída para esta etapa, com validações complementares pendentes. A próxima parte prática será a implementação real de Produtos e Estoque da Questão 6.
