@@ -46,3 +46,14 @@ Utilizei o apoio da IA para acelerar o trabalho dentro do prazo, mas questionei 
 O código e os documentos incluem contribuições geradas ou redigidas com assistência do ChatGPT. Não atribuo à IA testes, pesquisas ou execuções que não tenham sido realizados ou verificados. Continuo responsável por entender, revisar, validar e apresentar a solução.
 
 Este registro deverá ser atualizado à medida que novas partes práticas forem implementadas.
+
+
+## Questão 6 — Implementação assistida por IA
+
+Após aprovar o ADR-004, autorizei o ChatGPT a iniciar a implementação da API de Produtos e Estoque e preparar uma pipeline no GitHub, mantendo o trabalho na branch `feat/products-stock-crud`. O ChatGPT produziu a primeira versão dos modelos, migrations Alembic, script de seed, endpoints CRUD, autenticação JWT e RBAC, cache Redis, integração com fila RQ, testes e workflow GitHub Actions. Minha participação anterior foi definir os requisitos e as regras de negócio detalhadas no ADR-004.
+
+Os limites são relevantes: compilei os arquivos localmente com auxílio da ferramenta, executei 14 testes isolados de regras de estoque e Pydantic, fiz um smoke test de migration/seed usando SQLite temporário e verifiquei hashing Argon2id e emissão/leitura de JWT para os dois perfis. A instalação de dependências adicionais não foi possível por indisponibilidade de rede no ambiente de testes. Não foi possível realizar nesta sessão testes reais com Docker Engine, PostgreSQL e Redis.
+
+O workflow `.github/workflows/integration.yml` foi adicionado à branch com gatilho em push, mas não recebi confirmação de conclusão da execução. O resultado da integração precisa ser verificado posteriormente na aba Actions. Não devo apresentar a simples publicação do workflow como evidência de testes aprovados.
+
+O código entregue está sujeito à revisão, correção e validação final. A responsabilidade de entender e apresentar as decisões permanece comigo, inclusive nos pontos em que a IA produziu trechos de implementação.
