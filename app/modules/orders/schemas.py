@@ -11,7 +11,7 @@ class ServiceWarning(BaseModel):
 
 class OrderSummaryResponse(BaseModel):
     order_id: str
-    status: Literal["complete", "partial"]
+    status: Literal["complete", "partial", "unavailable"]
     data: dict[str, dict[str, Any] | None]
     services: dict[str, ServiceStatus]
     warnings: list[ServiceWarning]

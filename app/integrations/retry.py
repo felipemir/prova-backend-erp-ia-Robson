@@ -9,8 +9,16 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class TransientServiceError(Exception):
+class IntegrationError(Exception):
+    """Falha esperada de uma integração."""
+
+
+class TransientServiceError(IntegrationError):
     """Falha transitória passível de nova tentativa."""
+
+
+class PermanentServiceError(IntegrationError):
+    """Falha permanente que não deve ser repetida."""
 
 
 async def call_with_retry(

@@ -5,7 +5,7 @@ from typing import Any
 
 from app.core.config import Settings, get_settings
 from app.integrations import mock_services
-from app.integrations.retry import call_with_retry
+from app.integrations.retry import IntegrationError, call_with_retry
 from app.modules.orders.schemas import OrderSummaryResponse, ServiceStatus, ServiceWarning
 
 logger = logging.getLogger(__name__)
@@ -22,9 +22,12 @@ async def consultar_com_protecao(
     except TimeoutError:
         logger.error("Timeout definitivo na integração %s", service_name)
         return service_name, None, "timeout"
-    except Exception:
+    except IntegrationError:
         logger.exception("Falha definitiva na integração %s", service_name)
         return service_name, None, "error"
+    except Exception:
+        logger.exception("Erro inesperado na integração %s", service_name)
+        raise
 
 
 async def get_order_summary(order_id: str) -> OrderSummaryResponse:
@@ -57,7 +60,7 @@ async def get_order_summary(order_id: str) -> OrderSummaryResponse:
 
     return OrderSummaryResponse(
         order_id=order_id,
-        status="partial" if warnings else "complete",
+        status=("unavailable" if len(warnings) == len(results) else "partial" if warnings else "complete"),
         data=data,
         services=services,
         warnings=warnings,
