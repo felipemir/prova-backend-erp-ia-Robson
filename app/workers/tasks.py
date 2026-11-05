@@ -2,6 +2,7 @@ import json
 import logging
 from sqlalchemy.exc import IntegrityError
 from app.core.database import SessionLocal
+from app.modules.products.models import Product  # Registra a tabela referenciada pela FK no metadata
 from app.modules.stock.models import StockAlert
 
 logger = logging.getLogger(__name__)
