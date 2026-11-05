@@ -1,10 +1,10 @@
 # ADR-004 — Como defini a gestão de Produtos e Estoque, autenticação e inicialização do ambiente
 
-**Status:** Aceito — implementação inicial publicada na branch `feat/products-stock-crud`. Testes de integração com Docker/PostgreSQL/Redis pendentes de confirmação.
+**Status:** Aceito — implementação validada nos principais fluxos com Docker, PostgreSQL, Redis e RQ em 05/11/2026. Ver seção 21 para evidências e limitações da verificação; GitHub Actions ainda não confirmado.
 
 **Escopo:** Parte 3 — Questão 6, com impactos na Questão 7 (Docker).
 
-**Uso de Inteligência Artificial:** Utilizei o ChatGPT como apoio para discutir alternativas, avaliar regras de negócio, entender requisitos técnicos e organizar e redigir este ADR. As decisões foram construídas e revisadas durante nossas conversas. A implementação e os testes ainda não foram realizados nesta etapa.
+**Uso de Inteligência Artificial:** Utilizei o ChatGPT como apoio para discutir alternativas, avaliar regras de negócio, entender requisitos técnicos e organizar e redigir este ADR. As decisões foram construídas e revisadas durante nossas conversas. Este documento preserva as decisões feitas antes de implementar; os resultados posteriores estão documentados nas seções 20 e 21.
 
 ---
 
@@ -240,3 +240,36 @@ O Compose passou a incluir um serviço `init` que aplica migrations e seed antes
 Foi publicado o workflow `.github/workflows/integration.yml`, configurado para execuções no push da branch e manualmente. A conexão com GitHub aceitou o arquivo, mas não confirmou uma execução ou resultado remoto. Essa checagem deve ser concluída pelo avaliador ou na revisão posterior, usando a aba Actions do repositório.
 
 **Limitações mantidas e explicitadas:** a operação de atualização do estoque é administrativa, sem transações de movimentação; a persistência PostgreSQL e a fila Redis não são atômicas; o cache pode apresentar uma pequena janela de inconsistência; e as credenciais presentes no `.env.example` são exclusivamente demonstrações locais. A entrega permanece sujeita aos ajustes que os testes reais apontarem.
+
+
+## 21. Validação integrada e revisão após implementação (05/11/2026)
+
+Depois de registrar o plano inicial, executei a aplicação com Docker no Linux e validei o comportamento da API pelo Postman, verificando diretamente PostgreSQL, Redis e o worker RQ. **Esta seção é um registro posterior**, não altera retroativamente os motivos e decisões descritos nas seções anteriores.
+
+### Falha encontrada e corrigida no worker
+
+A primeira mudança de estoque de 20 para 12 unidades foi salva no PostgreSQL e enfileirada no RQ, mas o worker falhou ao persistir o alerta. O traceback indicou `sqlalchemy.exc.NoReferencedTableError`: o processo do worker não tinha registrado o modelo `Product` no metadata do SQLAlchemy, embora a tabela existisse no banco. Adicionei o import de `Product` em `app/workers/tasks.py`, reconstruí a imagem e repeti o teste. As transições seguintes foram processadas, com registros em `stock_alerts`. Essa experiência demonstrou por que o teste integrado do worker é necessário além de testes das funções isoladas.
+
+### Fluxos comprovados no ambiente local
+
+- **Docker/Questão 7:** após remover os volumes do projeto, executei somente `docker compose up`. O PostgreSQL e Redis inicializaram do zero, `init` encerrou com código 0, o RQ começou a escutar a fila e o Uvicorn iniciou. A consulta posterior confirmou os funcionários e produtos cadastrados automaticamente; o Compose cumpre a preparação inicial sem comandos manuais adicionais.
+- **JWT/RBAC:** login com ambos os perfis retornou token; leitura sem autenticação retornou `401`, funcionário autenticado acessou os produtos; `DELETE` por funcionário retornou `403` e por administrador retornou `204`. A consulta posterior ao produto excluído retornou `404`.
+- **CRUD/validação:** produto criado por funcionário com `201`, recuperado por `GET`, atualizado por `PATCH`; cadastro inicial abaixo de 12 unidades retornou `422`. Produto existente pôde ser atualizado até zero, sem exclusão automática.
+- **Listagem:** filtrei produtos com `estoque_baixo=true` (inclui 0 a 12 unidades), por `nome=mouse` (busca sem diferenciar maiúsculas/minúsculas), e por `preco_min=150&preco_max=300`. A paginação foi verificada nas páginas 1 e 2 com `page_size=2`, sem repetição dos itens.
+- **Redis:** após `GET /products/7`, a chave `erp:products:7` continha o JSON do produto. Após atualização, `GET` da chave retornou `(nil)`, consistente com invalidação; o TTL de 60 segundos não permite concluir a partir desse único `(nil)` que a remoção não foi causada por expiração natural.
+- **RQ/PostgreSQL:** os alertas para piora de faixa (como `estoque_baixo` → `ultimas_unidades` e `ultimas_unidades` → `sem_estoque`) foram encontrados em `stock_alerts`. Alteração dentro da mesma faixa não gerou novo alerta.
+- **Testes automatizados:** a suíte original apresentou **27 testes aprovados** na execução local relatada. Após consolidar os testes parametrizados, a versão atual apresentou **17 testes aprovados**, segundo a execução informada pelo autor. O arquivo `test_stock_rules.py` possui 4 testes que percorrem 14 cenários; menos funções coletadas não implica, isoladamente, perda dos cenários definidos. Não reexecutei a versão final remotamente pela conexão GitHub.
+
+### Evolução simples no Compose: serviço ready
+
+Acrescentei um serviço `ready` que, após `api` ficar `healthy` e `worker` atingir `service_started`, imprime `PROJETO INICIALIZADO CORRETAMENTE E PRONTO PARA TESTES`. É uma **mensagem de prontidão para uso demonstrativo**, não um teste transacional completo do worker. O processamento real da fila foi verificado separadamente.
+
+### Limitações mantidas e decisões que ainda cabem evolução
+
+- A tabela `stock_alerts` referencia `products` com `ON DELETE CASCADE`. **Excluir produto apaga também seu histórico de alertas**, comportamento implementado e observado como risco de auditoria. Preservar histórico exigiria mudança de modelagem e migration futura; não afirmo que isso foi resolvido.
+- A persistência PostgreSQL, a publicação na fila Redis e a invalidação do cache não formam uma transação distribuída. Há possibilidade de falha do enqueue depois de salvar o estoque e janela de inconsistência do cache; a implementação atual prioriza simplicidade e registra problemas em log.
+- O seed de demonstração insere diretamente quantidades inferiores a 12 como estados existentes, mas o endpoint de cadastro exige mínimo de 12. As credenciais e segredos padrão são exclusivamente para ambiente de demonstração local; não devem ser usados em produção.
+- O healthcheck da API valida HTTP e a dependência de `ready` aguarda o worker iniciar, mas não demonstra, sozinha, uma consulta ao banco ou o processamento de uma tarefa.
+- O workflow `.github/workflows/integration.yml` está versionado e configurado, **sem confirmação independente de execução bem-sucedida no GitHub Actions**. Não atribuo ao ambiente remoto a aprovação dos 17 testes executados localmente.
+
+Os testes manuais e as execuções locais relatados nesta seção foram feitos pelo autor no seu Linux; a IA ajudou a analisar resultados, investigar a falha do worker, corrigir o import e redigir este registro. Isso mantém distinguíveis as decisões iniciais, a implementação produzida com apoio de IA e as evidências observadas posteriormente.
