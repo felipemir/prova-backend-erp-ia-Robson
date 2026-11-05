@@ -235,7 +235,7 @@ A primeira versão dos módulos foi publicada na branch de desenvolvimento, **se
 
 O Compose passou a incluir um serviço `init` que aplica migrations e seed antes de iniciar API e worker, preservando o requisito de um único `docker compose up`.
 
-**Validação efetivamente realizada:** a compilação dos arquivos Python da implementação local terminou sem erro, e 14 testes de regras de estoque e validações Pydantic passaram no ambiente disponível. Não consegui executar Docker Engine, PostgreSQL ou Redis reais neste ambiente nem instalar dependências adicionais devido à indisponibilidade de acesso ao índice de pacotes. Portanto, **não afirmo que os testes de integração passaram**.
+**Validação efetivamente realizada:** a compilação dos arquivos Python terminou sem erro, e **14 testes de regras de estoque e Pydantic passaram**. Executei a migration e o seed duas vezes em um banco **SQLite temporário** como smoke test: foram criados 2 funcionários, 6 produtos e 1 registro de versão do Alembic, sem duplicações no segundo seed. Também validei os hashes Argon2id e a emissão/leitura de JWT para ambos os perfis nesse ambiente temporário. Esses testes não substituem PostgreSQL ou Redis reais. Não consegui executar Docker Engine, PostgreSQL ou Redis reais nesta sessão nem instalar dependências adicionais devido à indisponibilidade do índice de pacotes. Portanto, **não afirmo que os testes de integração com os serviços reais passaram**.
 
 Foi publicado o workflow `.github/workflows/integration.yml`, configurado para execuções no push da branch e manualmente. A conexão com GitHub aceitou o arquivo, mas não confirmou uma execução ou resultado remoto. Essa checagem deve ser concluída pelo avaliador ou na revisão posterior, usando a aba Actions do repositório.
 
