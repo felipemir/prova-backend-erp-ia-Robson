@@ -110,35 +110,35 @@ O Dockerfile atual copia `app/`, mas não a pasta `tests/`; portanto, os testes 
 
 > Implementação publicada na branch de desenvolvimento. Os testes com serviços reais devem ser confirmados na pipeline ou no Docker local antes de considerar a entrega validada.
 
-- **Produtos:** \`POST /products\`, \`GET /products\`, \`GET /products/{id}\`, \`PATCH /products/{id}\` e \`DELETE /products/{id}\` (exclusivo de administrador).
+- **Produtos:** `POST /products`, `GET /products`, `GET /products/{id}`, `PATCH /products/{id}` e `DELETE /products/{id}` (exclusivo de administrador).
 - **Cadastro:** quantidade inicial de 12 ou mais; nome textual; preço Decimal não negativo.
 - **Estoque:** 0 = sem estoque; 1–5 = últimas unidades; 6–12 = estoque baixo; 13+ = disponível. Atualizações posteriores podem chegar a zero.
-- **Listagem:** \`page\`, \`page_size\`, \`nome\`, \`preco_min\`, \`preco_max\`, \`estoque_baixo\`.
-- **Funcionários:** \`POST /auth/login\` com formulário \`username\` (e-mail) e \`password\` (senha); \`GET /employees/me\`; \`POST /employees\` apenas para administrador.
+- **Listagem:** `page`, `page_size`, `nome`, `preco_min`, `preco_max`, `estoque_baixo`.
+- **Funcionários:** `POST /auth/login` com formulário `username` (e-mail) e `password` (senha); `GET /employees/me`; `POST /employees` apenas para administrador.
 - **Autorização:** funcionários podem consultar, criar e alterar produtos; somente o administrador pode excluir produtos e cadastrar funcionários.
-- **Redis:** cache-aside em \`GET /products/{id}\`, com TTL e invalidação após alterações.
-- **RQ:** mudanças para faixas mais críticas enfileiram tarefa; o worker grava \`stock_alerts\` e emite log estruturado.
+- **Redis:** cache-aside em `GET /products/{id}`, com TTL e invalidação após alterações.
+- **RQ:** mudanças para faixas mais críticas enfileiram tarefa; o worker grava `stock_alerts` e emite log estruturado.
 - **Persistência:** SQLAlchemy, PostgreSQL, Alembic; seed idempotente.
 
-**Inicialização exigida:** apenas \`docker compose up\`. O serviço \`init\` aplica \`alembic upgrade head\` e executa \`python -m app.seed\` antes de iniciar API e worker. Os volumes são preservados entre reinicializações.
+**Inicialização exigida:** apenas `docker compose up`. O serviço `init` aplica `alembic upgrade head` e executa `python -m app.seed` antes de iniciar API e worker. Os volumes são preservados entre reinicializações.
 
-As credenciais demonstrativas estão documentadas no \`.env.example\`, **apenas para desenvolvimento local**; altere-as e substitua \`JWT_SECRET\` antes de expor o sistema. Dois logins demonstrativos:
+As credenciais demonstrativas estão documentadas no `.env.example`, **apenas para desenvolvimento local**; altere-as e substitua `JWT_SECRET` antes de expor o sistema. Dois logins demonstrativos:
 
 | Perfil | E-mail | Senha demonstrativa |
 | --- | --- | --- |
-| Administrador | \`admin@example.test\` | \`LocalAdmin123!\` |
-| Funcionário | \`employee@example.test\` | \`LocalEmployee123!\` |
+| Administrador | `admin@example.test` | `LocalAdmin123!` |
+| Funcionário | `employee@example.test` | `LocalEmployee123!` |
 
 Exemplo de login:
 
-\`\`\`bash
+```bash
 curl -X POST http://localhost:8000/auth/login \
   -d 'username=admin@example.test&password=LocalAdmin123!'
-\`\`\`
+```
 
 Os campos de cadastro de funcionários e as credenciais iniciais são demonstrativos, não um sistema completo de gestão de identidade.
 
-**Testes:** \`python -m pytest -q tests/test_stock_rules.py\` (14 verificações aprovadas localmente). A pipeline \`.github/workflows/integration.yml\` tenta construir o Compose, aplicar novamente migration e seed e executar toda a suíte dentro da rede Docker. O sucesso da execução remota deve ser verificado separadamente.
+**Testes:** `python -m pytest -q tests/test_stock_rules.py` (14 verificações aprovadas localmente). A pipeline `.github/workflows/integration.yml` tenta construir o Compose, aplicar novamente migration e seed e executar toda a suíte dentro da rede Docker. O sucesso da execução remota deve ser verificado separadamente.
 
 Decisões técnicas: [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md).
 
