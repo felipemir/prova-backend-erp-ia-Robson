@@ -1,67 +1,48 @@
 # Uso de Inteligência Artificial — Registro de apoio
 
-## Ferramenta utilizada
+## Ferramenta e objetivo
 
-Utilizei o ChatGPT como apoio durante a análise e a preparação documental das questões de arquitetura da prova.
+Utilizei o ChatGPT para apoiar o estudo, a discussão de alternativas, a organização do projeto, a redação da documentação, a elaboração inicial de código e testes e as revisões técnicas. A prova permite apoio de IA, mas procurei manter explícitas as escolhas, as dúvidas que tive e os limites entre uma proposta e algo de fato implementado e validado.
 
-## Como utilizei a ferramenta
+## Questões 1 e 2 — Arquitetura e organização
 
-Usei a IA principalmente como apoio para estudar, discutir alternativas, fazer questionamentos sobre minhas decisões e organizar minha linha de raciocínio.
+Conversei com a IA sobre a separação entre Pedidos, Estoque, Clientes e Financeiro; comunicação REST e eventos; transações, consistência, Redis, idempotência, observabilidade e escalabilidade.
 
-Durante a Questão 1, conversei sobre responsabilidades entre serviços, comunicação síncrona e assíncrona, concorrência, PostgreSQL, Redis, processamento de eventos, segurança e observabilidade.
+Trouxe minha experiência com Magento 2 e reservas de estoque como referência para avaliar as alternativas. Questionei a necessidade de novos microsserviços sem dados de escala e preferi começar por um monólito modular, com possibilidade de evolução. Discutimos também o uso de arquitetura em camadas no FastAPI, em comparação com padrões conhecidos do Java/Spring. Inicialmente considerei consultas diretamente no Service, mas preferi separar o acesso ao banco em Repository quando houver persistência.
 
-Durante a Questão 2, utilizei a ferramenta para revisar conceitos do FastAPI, comparar sua organização com padrões que conheço do Java e discutir separação de responsabilidades e princípios SOLID.
+A IA ajudou a comparar as opções e a organizar e redigir o README e os ADRs 001 e 002 a partir das discussões. As propostas conceituais não devem ser interpretadas como componentes já implementados.
 
-Também utilizei a IA para ajudar na **redação e estruturação dos ADRs e do README**. Como o prazo da prova está curto e preciso reservar tempo para implementar e testar a solução, escrevi e revisei esses documentos com o auxílio do ChatGPT para agilizar a documentação. Mantive o controle sobre as escolhas, o conteúdo e o que seria aceito.
+## Questão 3 — Concorrência em Python
 
-## Quais decisões partiram de mim
+Utilizei a IA para comparar `asyncio`, `threading` e `multiprocessing`, distinguindo I/O assíncrono, bibliotecas bloqueantes e processamento intensivo de CPU. Discutimos também a diferença entre concorrência durante uma requisição e tarefas delegadas a uma fila Redis/worker.
 
-Minha preferência por começar com uma arquitetura simples e evolutiva surgiu da preocupação em não adicionar complexidade sem requisitos que a justificassem.
+Esses pontos foram registrados no ADR-003, com situações de ERP e justificativas.
 
-Trouxe como referência minha experiência com Magento 2, especialmente MSI, quantidade vendável e reservas de estoque.
+## Questão 4 — Implementação e revisão
 
-Optei por investigar e otimizar gargalos antes de separar imediatamente novos microsserviços.
+O ChatGPT colaborou na proposta inicial de organização dos arquivos, do endpoint `GET /orders/{order_id}/summary`, dos mocks de Clientes/Estoque/Financeiro, do uso de `asyncio.gather()`, da política de timeout e retries e dos testes automatizados.
 
-Na Questão 2, propus utilizar como referência o MVC do ecossistema Java, com o qual já tive contato.
+Durante a discussão, preferi **três tentativas totais**, com **backoff progressivo**, em vez de retries imediatos. Também considerei um fluxo transacional de aprovação de pedidos, mas escolhi uma consulta informativa para manter o escopo próximo ao enunciado.
 
-Inicialmente, considerei manter consultas diretamente no Service para facilitar a leitura. Depois das discussões sobre manutenção, decidi separar Service e Repository.
+Depois da primeira implementação, revisei o comportamento e identifiquei, com apoio da análise, pontos que exigiam ajustes:
 
-Também escolhi organizar os arquivos por domínio, mantendo coerência com a modularização proposta na Questão 1.
+- O resumo totalmente indisponível passou a retornar HTTP `503` e `status: "unavailable"`, em vez de apresentar uma falha total como resposta parcial bem-sucedida.
+- As falhas esperadas passaram a usar exceções próprias de integração; erros de programação inesperados não devem ser disfarçados como indisponibilidade externa.
+- Foi adicionado um teste específico para os intervalos de backoff, além dos testes de quantidade de tentativas.
+- As variáveis de timeout, tentativas e backoff, lidas pela aplicação, passaram a ser encaminhadas pelo Docker Compose ao container da API.
 
-Na discussão sobre SOLID, defendi que as regras de estoque e o processamento de notificações deveriam possuir responsabilidades separadas.
+O ADR-003 detalha a sequência dessas decisões, o que considerei e o que alterei. A existência dos testes no repositório **não equivale à confirmação de que todos passaram após os últimos ajustes**.
 
-## Quais contribuições recebi da IA
+## Preparação do ambiente Docker
 
-A ferramenta apresentou alternativas arquiteturais, explicou conceitos técnicos e apontou possíveis limitações das minhas escolhas.
+Usei o ChatGPT para criar e revisar o Dockerfile e o Compose, incluindo FastAPI, PostgreSQL, Redis e worker RQ. Optei por antecipar a conteinerização para não deixar essa etapa para o final. Também recebi apoio para examinar logs, healthchecks e informações de consumo de recursos após rodar o ambiente localmente.
 
-Entre os tópicos discutidos estão consistência transacional, idempotência, Transactional Outbox, cache, recuperação de mensagens, injeção de dependências no FastAPI e separação de responsabilidades.
+Os containers foram inicializados no meu ambiente e a API respondeu ao endpoint de saúde. Isso não comprova, por si só, as integrações de banco, cache, execução de tarefas e testes automatizados, que ainda precisam ser validados quando implementados.
 
-Também recebi exemplos e perguntas para avaliar o comportamento da arquitetura diante de falhas e crescimento do sistema.
+## Decisões, responsabilidades e limites
 
-A redação inicial dos documentos foi gerada com apoio da IA, a partir das discussões e orientações que forneci.
+Utilizei o apoio da IA para acelerar o trabalho dentro do prazo, mas questionei alternativas e procurei manter o projeto simples e evolutivo. Não tratei sugestões como decisões obrigatórias.
 
-## O que aceitei, questionei ou alterei
+O código e os documentos incluem contribuições geradas ou redigidas com assistência do ChatGPT. Não atribuo à IA testes, pesquisas ou execuções que não tenham sido realizados ou verificados. Continuo responsável por entender, revisar, validar e apresentar a solução.
 
-Não aceitei todas as alternativas como decisões definitivas.
-
-Reconsiderei a ideia de consultar continuamente todos os pagamentos e preferi eventos como mecanismo principal, com reconciliação direcionada.
-
-Discuti locks distribuídos e preferi começar com mecanismos transacionais do PostgreSQL.
-
-Na Questão 2, comecei favorecendo consultas no Service e depois escolhi separá-las em Repository, considerando os efeitos na manutenção.
-
-Solicitei que os ADRs fossem escritos como um diário pessoal de raciocínio e que o README permanecesse compacto.
-
-## Limites deste registro
-
-Até este ponto, o apoio descrito se refere principalmente ao estudo, à discussão arquitetural e à preparação da documentação.
-
-As propostas conceituais não devem ser confundidas com componentes implementados, testados ou disponibilizados em produção.
-
-O uso de IA nas próximas etapas de programação, testes, depuração e documentação deverá ser registrado conforme realmente ocorrer.
-
-A revisão técnica, a validação das decisões e a responsabilidade pelo material submetido permanecem comigo.
-
-### Preparação da infraestrutura Docker
-
-Usei o ChatGPT para estruturar os arquivos de Docker/Compose e as configurações de FastAPI, PostgreSQL, Redis e worker RQ. A decisão de antecipar a conteinerização e exigir inicialização via `docker compose up` foi minha. A execução real dos containers e os testes de integração serão registrados quando forem realizados no meu ambiente.
+Este registro deverá ser atualizado à medida que novas partes práticas forem implementadas.
