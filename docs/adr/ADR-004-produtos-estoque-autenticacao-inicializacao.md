@@ -1,6 +1,6 @@
 # ADR-004 — Como defini a gestão de Produtos e Estoque, autenticação e inicialização do ambiente
 
-**Status:** Aceito — decisões aprovadas antes da implementação. Questões técnicas de idempotência de tarefas, ordem entre commit/cache/fila e credenciais de demonstração serão avaliadas durante a implementação.
+**Status:** Aceito — implementação inicial publicada na branch `feat/products-stock-crud`. Testes de integração com Docker/PostgreSQL/Redis pendentes de confirmação.
 
 **Escopo:** Parte 3 — Questão 6, com impactos na Questão 7 (Docker).
 
@@ -225,3 +225,18 @@ Manter quantidade em `products`, mínimo de 12 unidades somente na criação, at
 Procurei equilibrar simplicidade e coerência de domínio. Minha experiência com MSI me levou a considerar uma separação física do estoque, mas o enunciado não a exige. Preferi implementar o essencial com regras de negócio explícitas, autenticação persistente e processamento em segundo plano verificável.
 
 Também considero importante facilitar a avaliação com um único comando de inicialização. Este ADR registra minhas decisões **antes de implementar**. As questões operacionais ainda em aberto — prevenção de alertas duplicados, ordem entre transação/cache/fila e credenciais demonstrativas — serão analisadas na implementação e registradas quando houver uma decisão concreta.
+
+
+---
+
+## 20. Registro da implementação inicial (05/11/2026)
+
+A primeira versão dos módulos foi publicada na branch de desenvolvimento, **sem merge na main**. Foram criados os modelos SQLAlchemy `products`, `employees`, `stock_alerts`; a migration Alembic; o seed idempotente de dois funcionários e seis produtos; o CRUD FastAPI com filtros e paginação; JWT com senhas Argon2id e regras dos perfis; cache-aside Redis; e tarefa RQ que registra alerta no PostgreSQL e emite log estruturado.
+
+O Compose passou a incluir um serviço `init` que aplica migrations e seed antes de iniciar API e worker, preservando o requisito de um único `docker compose up`.
+
+**Validação efetivamente realizada:** a compilação dos arquivos Python da implementação local terminou sem erro, e 14 testes de regras de estoque e validações Pydantic passaram no ambiente disponível. Não consegui executar Docker Engine, PostgreSQL ou Redis reais neste ambiente nem instalar dependências adicionais devido à indisponibilidade de acesso ao índice de pacotes. Portanto, **não afirmo que os testes de integração passaram**.
+
+Foi publicado o workflow `.github/workflows/integration.yml`, configurado para execuções no push da branch e manualmente. A conexão com GitHub aceitou o arquivo, mas não confirmou uma execução ou resultado remoto. Essa checagem deve ser concluída pelo avaliador ou na revisão posterior, usando a aba Actions do repositório.
+
+**Limitações mantidas e explicitadas:** a operação de atualização do estoque é administrativa, sem transações de movimentação; a persistência PostgreSQL e a fila Redis não são atômicas; o cache pode apresentar uma pequena janela de inconsistência; e as credenciais presentes no `.env.example` são exclusivamente demonstrações locais. A entrega permanece sujeita aos ajustes que os testes reais apontarem.
