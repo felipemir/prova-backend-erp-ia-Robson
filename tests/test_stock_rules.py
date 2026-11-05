@@ -1,15 +1,36 @@
 import pytest
 from pydantic import ValidationError
-from app.modules.stock.service import stock_status, alert_transition
+
 from app.modules.products.schemas import ProductCreate, ProductPatch
+from app.modules.stock.service import alert_transition, stock_status
 
-@pytest.mark.parametrize("quantity,expected", [(0,"sem_estoque"),(1,"ultimas_unidades"),(5,"ultimas_unidades"),(6,"estoque_baixo"),(12,"estoque_baixo"),(13,"disponivel")])
-def test_stock_bands(quantity, expected):
-    assert stock_status(quantity) == expected
 
-@pytest.mark.parametrize("old,new,expected", [(20,12,True),(12,11,False),(6,5,True),(3,0,True),(20,3,True),(5,20,False)])
-def test_alert_transitions(old, new, expected):
-    assert alert_transition(old, new) == expected
+def test_stock_bands():
+    scenarios = [
+        (0, "sem_estoque"),
+        (1, "ultimas_unidades"),
+        (5, "ultimas_unidades"),
+        (6, "estoque_baixo"),
+        (12, "estoque_baixo"),
+        (13, "disponivel"),
+    ]
+
+    for quantity, expected in scenarios:
+        assert stock_status(quantity) == expected, f"quantity={quantity}"
+
+
+def test_alert_transitions():
+    scenarios = [
+        (20, 12, True),
+        (12, 11, False),
+        (6, 5, True),
+        (3, 0, True),
+        (20, 3, True),
+        (5, 20, False),
+    ]
+
+    for old, new, expected in scenarios:
+        assert alert_transition(old, new) == expected, f"old={old}, new={new}"
 
 def test_minimum_on_create_only():
     with pytest.raises(ValidationError):

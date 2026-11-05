@@ -2,7 +2,7 @@
 
 Resolução da prova técnica de Back-end e Inteligência Artificial aplicada a um cenário de ERP. A implementação segue uma proposta modular em FastAPI, com decisões documentadas em Architecture Decision Records (ADRs).
 
-> **Estado atual:** Questões 1, 2 e 3 documentadas; Questão 4 implementada; Questão 6 implementada nesta branch e aguardando validação de integração com Docker/PostgreSQL/Redis. A suíte local de regras de estoque passou (14 testes); a pipeline GitHub Actions foi configurada, mas sua execução ainda não foi confirmada. Questões 8 a 11 seguem pendentes.
+> **Estado atual:** Questões 1, 2 e 3 documentadas; Questão 4 implementada; Questão 6 implementada nesta branch e aguardando validação de integração com Docker/PostgreSQL/Redis. A suíte local de regras de estoque passou (4 testes, cobrindo 14 cenários); a pipeline GitHub Actions foi configurada, mas sua execução ainda não foi confirmada. Questões 8 a 11 seguem pendentes.
 
 ## Parte 1 — Arquitetura e organização (Questões 1 e 2)
 
@@ -138,7 +138,7 @@ curl -X POST http://localhost:8000/auth/login \
 
 Os campos de cadastro de funcionários e as credenciais iniciais são demonstrativos, não um sistema completo de gestão de identidade.
 
-**Testes:** `python -m pytest -q tests/test_stock_rules.py` (14 verificações aprovadas localmente). A pipeline `.github/workflows/integration.yml` tenta construir o Compose, aplicar novamente migration e seed e executar toda a suíte dentro da rede Docker. O sucesso da execução remota deve ser verificado separadamente.
+**Testes:** `python -m pytest -q tests/test_stock_rules.py` (4 testes cobrindo 14 cenários, aprovados localmente). A pipeline `.github/workflows/integration.yml` tenta construir o Compose, aplicar novamente migration e seed e executar toda a suíte dentro da rede Docker. O sucesso da execução remota deve ser verificado separadamente.
 
 Decisões técnicas: [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md).
 

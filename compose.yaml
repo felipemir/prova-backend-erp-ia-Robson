@@ -73,6 +73,15 @@ services:
       init:
         condition: service_completed_successfully
     restart: unless-stopped
+  ready:
+    build: .
+    command: ["python", "-c", "print('PROJETO INICIALIZADO CORRETAMENTE E PRONTO PARA TESTES')"]
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    restart: "no"
 volumes:
   postgres_data:
   redis_data:
