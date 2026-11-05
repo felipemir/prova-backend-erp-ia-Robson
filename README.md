@@ -1,108 +1,125 @@
 # Prova prática — Back-end e IA (ERP)
 
-Resolução da prova técnica de Back-end e Inteligência Artificial voltada a um cenário de ERP.
+Resolução da prova técnica de Back-end e Inteligência Artificial aplicada a um cenário de ERP. A implementação segue uma proposta modular em FastAPI, com decisões documentadas em Architecture Decision Records (ADRs).
 
-> **Estado do projeto:** a Parte 1 (Questões 1 e 2) estabelece a base arquitetural. As partes práticas ainda serão implementadas e as decisões poderão ser atualizadas com as descobertas durante o desenvolvimento.
+> **Estado atual:** Questões 1, 2 e 3 documentadas; Questão 4 implementada com mocks e testes automatizados escritos, ainda sem confirmação da execução integral da suíte após os últimos ajustes. O Docker Compose já foi iniciado localmente com API, PostgreSQL, Redis e worker. O CRUD, o agente de IA e as demais questões ainda estão em desenvolvimento.
 
-## Parte 1 — Arquitetura e organização
+## Parte 1 — Arquitetura e organização (Questões 1 e 2)
 
 ### Questão 1 — Arquitetura de Pedidos e Estoque
 
-**Proposta:** uma aplicação modular em FastAPI para os domínios de Pedidos e Estoque, integrada aos microsserviços existentes de Clientes e Financeiro. Como o enunciado não especifica volume de usuários, requisições por segundo ou metas quantitativas de disponibilidade, preferi uma solução evolutiva em vez de introduzir complexidade distribuída sem evidências de necessidade.
+Escolhi uma aplicação **modular em FastAPI** para Pedidos e Estoque, integrada por contratos aos microsserviços já existentes de Clientes e Financeiro. Como o enunciado não fornece volume de usuários ou requisitos quantitativos de escala, preferi começar com um **monólito modular** em vez de criar novos serviços distribuídos sem necessidade comprovada.
 
-A decisão considera minha experiência com Magento 2 e MSI, principalmente quantidades vendáveis, reservas e operações concorrentes.
+- **Comunicação:** REST para consultas que exigem retorno imediato; eventos e tarefas assíncronas para processos desacoplados, com idempotência e recuperação de falhas. Um evento `PagamentoAprovado` e a Transactional Outbox são propostas arquiteturais, não funcionalidades entregues.
+- **Persistência:** PostgreSQL como fonte de verdade; reservas de estoque precisam de transações e controle de concorrência. Redis será utilizado para cache e filas, sem substituir a consistência transacional.
+- **Entrada e observabilidade:** Kong, Prometheus, Grafana, logs estruturados e tracing são opções de evolução; não foram implantados.
+- **Crescimento:** antes de separar módulos ou ampliar infraestrutura, investigaria métricas, consultas, índices e gargalos reais.
 
-| Componente | Responsabilidade |
-| --- | --- |
-| Pedidos | Criar e acompanhar pedidos, administrar estados e cancelamentos e coordenar integrações comerciais |
-| Estoque | Controlar quantidades, disponibilidade, reservas, liberações e movimentações |
-| Clientes (existente) | Manter dados cadastrais e fornecer informações para validações |
-| Financeiro (existente) | Processar operações financeiras e disponibilizar seus resultados |
-| API Gateway | Encaminhar requisições externas e aplicar políticas gerais de entrada |
-
-**Comunicação:** REST para consultas que exigem resposta imediata, como validações de cadastro; mensageria para eventos e tarefas desacopladas. O Financeiro pode publicar `PagamentoAprovado` como mecanismo principal, com reconciliação direcionada via REST para situações pendentes. Eventos críticos precisam de idempotência, recuperação e entrega confiável; Transactional Outbox é uma alternativa para publicação consistente.
-
-**Persistência:** PostgreSQL é a fonte de verdade das operações críticas. Reservas devem utilizar transações e controle de concorrência. Redis apoia cache e execução de tarefas por workers, mas não substitui a consistência do PostgreSQL. O cache terá invalidação ou atualização explícita e, quando adequado, fallback para consultas ao banco. Não introduziria locks distribuídos inicialmente sem uma necessidade identificada.
-
-**Gateway e observabilidade:** Kong é uma alternativa para roteamento, autenticação geral e rate limiting; regras específicas de autorização continuam nos serviços. Prometheus e Grafana apoiariam métricas e alertas, complementados por logs estruturados e tracing distribuído (por exemplo, via OpenTelemetry). Monitoraria latência, erros, integrações, filas e inconsistências entre pedidos e pagamentos.
-
-**Escalabilidade e limites:** como Pedidos e Estoque compartilham implantação e recursos, primeiro investigaria consultas, índices, concorrência e processamento se houver aumento de carga. Uma separação em serviços independentes seria reavaliada diante de requisitos concretos de escala, disponibilidade ou implantação independente.
-
-Essa é uma **proposta conceitual**: não significa que Kong, um broker externo ou toda a infraestrutura de observabilidade já tenham sido implementados.
-
-Registro das alternativas e decisões: [ADR-001](docs/adr/ADR-001-arquitetura-pedidos-estoque.md).
+Detalhes, alternativas e justificativas: [ADR-001](docs/adr/ADR-001-arquitetura-pedidos-estoque.md).
 
 ### Questão 2 — Organização do FastAPI
 
-Escolhi uma **arquitetura em camadas inspirada no MVC do Java/Spring, adaptada ao FastAPI**. O framework não impõe MVC; aproveitarei recursos como `APIRouter`, `Depends` e Pydantic, com camadas Service e Repository para separar responsabilidades.
+Optei por uma **organização por domínio e camadas**, inspirada na separação de responsabilidades que conheço do Java/Spring, mas adaptada aos recursos do FastAPI. Em operações com persistência, a direção é **Router → Service → Repository → ORM/PostgreSQL**, com schemas Pydantic. Não crio Repository quando não existe acesso a banco, como no resumo simulado da Questão 4.
 
-Estrutura inicial planejada:
+A estrutura atual inclui `app/core/`, `app/modules/products/`, `app/modules/stock/`, `app/modules/orders/`, `app/integrations/`, `app/workers/` e `tests/`. Os arquivos de Produtos e Estoque ainda são bases para a implementação posterior do CRUD.
 
-```text
-app/
-├── main.py
-├── core/
-│   ├── config.py
-│   ├── database.py
-│   └── security.py
-├── modules/
-│   ├── products/
-│   │   ├── router.py
-│   │   ├── service.py
-│   │   ├── repository.py
-│   │   ├── models.py
-│   │   └── schemas.py
-│   └── stock/
-│       ├── router.py
-│       ├── service.py
-│       ├── repository.py
-│       ├── models.py
-│       └── schemas.py
-├── integrations/
-├── workers/
-└── tests/
-```
+Justificativas: [ADR-002](docs/adr/ADR-002-organizacao-fastapi.md).
 
-| Componente | Responsabilidade |
-| --- | --- |
-| Router | Endpoints, parâmetros HTTP e encaminhamento das operações |
-| Schema (Pydantic) | Validação e contratos de entrada e saída |
-| Service | Regras de negócio e coordenação |
-| Repository | Consultas e persistência |
-| Model (ORM) | Representação das entidades persistidas |
-| Core | Configurações, segurança e recursos compartilhados |
+## Parte 2 — Assíncrono e concorrência (Questões 3 e 4)
 
-Organizo as camadas **por domínio**, mantendo perto os arquivos relacionados a Produtos e Estoque. Isso preserva a linha de raciocínio da Questão 1. Quero aproveitar princípios de SOLID, Clean Architecture e DDD leve sem afirmar que implementarei esses padrões integralmente ou criar abstrações sem utilidade. Por exemplo, o módulo de Estoque detecta estoque baixo, mas delega a notificação a outro componente.
+### Questão 3 — Asyncio, threading e multiprocessing
 
-A estrutura acima é uma **base estabelecida para a implementação**, não uma lista de arquivos já criados. Poderá evoluir conforme as necessidades reais.
+- **`asyncio`:** operações concorrentes de I/O com bibliotecas assíncronas, como consultas independentes a APIs.
+- **`threading`:** operações bloqueantes de I/O, por exemplo, clientes HTTP síncronos legados; `asyncio.to_thread()` pode evitar bloquear o event loop.
+- **`multiprocessing`:** cálculos intensivos de CPU, como processamento de grandes volumes para previsão de demanda, considerando os custos de processos e o GIL do CPython tradicional.
 
-Registro do raciocínio: [ADR-002](docs/adr/ADR-002-organizacao-fastapi.md).
+Comparações e evolução do raciocínio: [ADR-003](docs/adr/ADR-003-concorrencia-resiliencia.md).
 
-## Documentação e uso de IA
+### Questão 4 — Consulta concorrente com tratamento de falhas
 
-- [ADR-001 — Como fui pensando na arquitetura de Pedidos e Estoque](docs/adr/ADR-001-arquitetura-pedidos-estoque.md)
-- [ADR-002 — Como escolhi organizar o projeto FastAPI](docs/adr/ADR-002-organizacao-fastapi.md)
-- [Uso de IA — Transparência e responsabilidades](docs/USO-DE-IA.md)
+Endpoint implementado: **`GET /orders/{order_id}/summary`**.
 
-Utilizei o ChatGPT para questionamentos, estudo, exploração de alternativas e apoio à escrita dos documentos. Minhas decisões e mudanças de direção estão registradas nos ADRs. As próximas etapas de implementação e testes serão documentadas conforme forem realizadas.
+O endpoint consulta **Clientes, Estoque e Financeiro simulados** com `asyncio.gather()` e `asyncio.sleep()`. Cada operação tem timeout por tentativa, até **três tentativas totais** e backoff progressivo para timeouts/falhas transitórias. Erros permanentes não são repetidos; falhas de programação inesperadas são propagadas.
 
-## Ambiente local com Docker Compose
+| Cenário | HTTP | Corpo |
+| --- | --- | --- |
+| Três fontes respondem | 200 | `status: "complete"` |
+| Uma ou duas fontes falham de forma esperada | 200 | `status: "partial"`, dados disponíveis e avisos |
+| Todas as fontes falham de forma esperada | 503 | `status: "unavailable"` |
+| Erro inesperado interno | 500 | Erro interno, sem mascarar como indisponibilidade externa |
 
-Pré-requisito: Docker Engine/Desktop com o plugin Compose. Na raiz do projeto:
+**Parâmetros padrão:** `REQUEST_TIMEOUT=2.0` segundos por tentativa, `MAX_ATTEMPTS=3` tentativas totais e `BACKOFF_BASE=0.5` segundo, gerando esperas de 0,5 s e 1 s antes dos retries.
+
+**Limite da demonstração:** as integrações são mocks; esse endpoint não cria pedidos, reserva estoque nem efetua pagamentos. Os testes cobrem os cenários de sucesso, concorrência, timeout, retries, backoff, falha parcial, indisponibilidade total, falha permanente e erro interno. A suíte deve ser executada e seu resultado confirmado na versão atual.
+
+Código: `app/modules/orders/`, `app/integrations/mock_services.py`, `app/integrations/retry.py` e `tests/test_order_summary.py`. Histórico das decisões: [ADR-003](docs/adr/ADR-003-concorrencia-resiliencia.md).
+
+## Ambiente local — Docker Compose (base da Questão 7)
+
+Pré-requisito: Docker Engine ou Docker Desktop com Docker Compose. Na raiz do projeto:
 
 ```bash
 docker compose up
 ```
 
-O Compose construirá a imagem na primeira execução e iniciará FastAPI, PostgreSQL, Redis e o worker RQ. Para reconstruir depois de alterar dependências: `docker compose up --build`.
+Para reconstruir a imagem após mudanças em dependências ou código:
 
-- Swagger: http://localhost:8000/docs
-- Saúde da API: http://localhost:8000/health
-- PostgreSQL: localhost:5433 (alterável por `POSTGRES_PORT`)
-- Redis: acessível somente entre containers
+```bash
+docker compose up --build
+```
 
-Os valores padrão são apenas para **desenvolvimento local** e permitem subir sem configurar nada antes. Para personalizar, copie `.env.example` para `.env`, ajuste as variáveis e não versione esse arquivo. Não utilize as credenciais de exemplo fora do ambiente local. Uma senha alterada após a inicialização do volume do PostgreSQL não atualiza automaticamente as credenciais já criadas.
+O Compose inicia quatro serviços: **API FastAPI/Uvicorn**, **PostgreSQL 16**, **Redis 7** e **worker RQ** (escutando a fila `default`, ainda sem tarefas de domínio).
 
-Use `docker compose ps` para verificar os containers e `docker compose down` para desligar. Os dados ficam em volumes Docker; `docker compose down -v` **remove os volumes e seus dados**.
+Endereços locais com portas padrão:
 
-O worker já escuta a fila `default`, mas tarefas do domínio, migrações e seed serão implementadas nas etapas seguintes. O healthcheck da API valida apenas a resposta HTTP, não a conectividade com banco e Redis. O ambiente está preparado para a implementação; o CRUD ainda não está implementado.
+- Swagger/OpenAPI: http://localhost:8000/docs
+- Healthcheck da API: http://localhost:8000/health
+- Resumo simulado: http://localhost:8000/orders/12345/summary
+- PostgreSQL: `localhost:5433`; Redis está acessível apenas entre containers.
+
+Personalização do ambiente:
+
+```bash
+cp .env.example .env
+```
+
+Edite o `.env` conforme necessário e recrie a API com `docker compose up -d --force-recreate api` para aplicar mudanças das variáveis. O Compose fornece valores padrão caso o `.env` não exista. O arquivo `.env` deve permanecer fora do Git; as credenciais do exemplo são **somente para desenvolvimento local**. Alterar a senha do PostgreSQL após inicializar seu volume não atualiza automaticamente a senha já persistida.
+
+Comandos de verificação:
+
+```bash
+docker compose ps
+docker compose config
+docker compose exec api printenv REQUEST_TIMEOUT MAX_ATTEMPTS BACKOFF_BASE
+docker compose down
+```
+
+O healthcheck atual confirma somente a resposta HTTP da API, não uma conexão efetiva com PostgreSQL ou Redis. O comando `docker compose down` preserva volumes; **`docker compose down -v` apaga os volumes de dados**.
+
+### Testes
+
+Com Python e as dependências de `requirements.txt` instalados no ambiente local, execute na raiz:
+
+```bash
+python -m pytest -q
+```
+
+O Dockerfile atual copia `app/`, mas não a pasta `tests/`; portanto, os testes não estão incluídos na imagem da API por padrão. Não se deve interpretar a inicialização bem-sucedida dos containers como evidência de que a suíte de testes passou.
+
+## Próximas etapas
+
+- **Questão 6:** CRUD de Produtos e Estoque com PostgreSQL/ORM, Pydantic, JWT, paginação, filtros, cache Redis com invalidação e tarefa de domínio em worker.
+- **Questão 7:** validar o conjunto completo após implementar banco, fila e eventuais migrations/seed.
+- **Questões 8 e 9:** agente local para consultas em linguagem natural e explicação de uma integração futura com LLM, tool calls/MCP e controles de segurança.
+- **Questões 10 e 11:** proposta conceitual em Go, portfólio e reflexão final.
+
+A documentação distingue o que está **implementado**, o que está **conceitualmente decidido** e o que segue **pendente**.
+
+## Documentação e uso de IA
+
+- [ADR-001 — Arquitetura de Pedidos e Estoque](docs/adr/ADR-001-arquitetura-pedidos-estoque.md)
+- [ADR-002 — Organização do FastAPI](docs/adr/ADR-002-organizacao-fastapi.md)
+- [ADR-003 — Concorrência e resiliência](docs/adr/ADR-003-concorrencia-resiliencia.md)
+- [Uso de IA — Registro de apoio e responsabilidades](docs/USO-DE-IA.md)
+
+Utilizei o ChatGPT para estudo, questionamentos, alternativas de arquitetura, redação de documentos, propostas de implementação, testes e revisão. As escolhas e revisões estão registradas nos ADRs, e os resultados de testes somente serão declarados quando efetivamente verificados.
