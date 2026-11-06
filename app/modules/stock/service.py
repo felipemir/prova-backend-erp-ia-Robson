@@ -28,4 +28,5 @@ def stock_status(quantity: int) -> str:
     return STATUS_NAMES[stock_band(quantity)]
 
 def alert_transition(previous: int, current: int) -> bool:
+    # Faixas com valor menor representam maior criticidade; alertar só na piora.
     return stock_band(current) < stock_band(previous)
