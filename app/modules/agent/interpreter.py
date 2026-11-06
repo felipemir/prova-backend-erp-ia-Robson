@@ -48,7 +48,8 @@ def _normalizar(texto: str) -> str:
 def interpretar(pergunta: str) -> ConsultaInterpretada:
     texto = _normalizar(pergunta)
     # Múltiplas condições e negações requerem interpretação mais complexa.
-    if re.search(r"\b(e|ou|nao|exceto)\b", texto):
+    # Não confundir a conjunção "e" com o verbo "é" após remover acentos.
+    if re.search(r"\b(ou|nao|exceto)\b", texto) or re.search(r"\be\b", pergunta.lower()):
         raise ValueError("Consulta não suportada: informe apenas uma condição, sem E/OU ou negação. Exemplo: Estoque abaixo de 10.")
     encontrados = list(PADRAO.finditer(texto))
     if len(encontrados) != 1:
