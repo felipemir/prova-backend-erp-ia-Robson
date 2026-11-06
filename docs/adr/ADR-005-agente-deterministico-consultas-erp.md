@@ -73,4 +73,4 @@ Depois de validar o Caminho A, poderemos estudar:
 
 ## 7. Registro de validação
 
-**Pendente nesta etapa:** este ADR registra a decisão antes da implementação e da execução dos novos testes. Quando forem executados, adicionarei os resultados sem sobrescrever o histórico.
+**Implementação inicial publicada na branch (05/11/2026):** foram adicionados os módulos `app/modules/agent/` (schemas, interpreter, service, repository e router), o endpoint autenticado `POST /agent/query`, casos de teste em `tests/test_agent.py` e documentação no README. A implementação usa SQLAlchemy somente de leitura e rejeita condições múltiplas ou não reconhecidas. **A nova suíte de testes e o endpoint ainda não foram executados/validados no ambiente Docker do autor após esses commits.** Quando houver resultados, serão registrados sem sobrescrever as decisões iniciais.
