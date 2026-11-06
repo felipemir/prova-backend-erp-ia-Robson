@@ -271,12 +271,51 @@ A pasta é montada somente para leitura; os testes de integração de API do age
 
 **Caminho B (proposta, não implementada):** condições compostas `AND`/`OR`, identificação/desambiguação de produtos, contexto e referências como `o segundo`, adaptador de LLM produzindo o mesmo contrato validado, observabilidade, paginação e métricas. As decisões estão no [ADR-005](docs/adr/ADR-005-agente-deterministico-consultas-erp.md).
 
+## Parte 5 — Evolução plugável para LLM, ferramentas e MCP (Questão 9)
+
+> **Status: proposta teórica/design — não implementada.** A prova não exige integração com um LLM real nesta etapa. A versão executável continua sendo o agente determinístico da Questão 8.
+
+### Decisão arquitetural
+
+Eu adotaria uma **arquitetura híbrida**: o interpretador determinístico atende perguntas simples que reconhece integralmente; perguntas mais complexas podem ser encaminhadas a um adaptador plugável de LLM. O LLM **propõe** uma ferramenta de consulta e seus argumentos, mas nunca executa SQL livre nem tem acesso direto ao PostgreSQL. O backend valida schema, autorização e limites, encaminha a consulta ao Service e retorna os dados estruturados.
+
+```text
+Funcionário com JWT
+    → API / orquestrador
+      ├─→ Interpretador determinístico (Questão 8)
+      │     → Service → Repository → PostgreSQL
+      └─→ Adaptador de LLM (futuro)
+            → validação de tool calling e autorização
+            → cliente MCP → servidor MCP central
+            → APIs/Services: Produtos, Pedidos, Financeiro
+            → retorno estruturado e fundamentado
+```
+
+**Ferramentas propostas (somente leitura):** `consultar_produtos`, `consultar_estoque`, `consultar_pedido`, `consultar_valor_pedido` e `consultar_documentacao`. Cada ferramenta teria um contrato tipado, com argumentos validados, campos permitidos, limites de resultados e verificação de autorização. Ferramentas como `criar_pedido`, `atualizar_produto` e `excluir_pedidos` **não seriam expostas**, mesmo para usuários administradores.
+
+**MCP central:** para os três domínios iniciais, prefiro um único servidor MCP publicando as ferramentas consultivas, sem concentrar regras de negócio. O MCP é a camada de adaptação; cada serviço continua responsável pelos dados e permissões. Em caso de aumento de carga ou autonomia de equipes, seria possível separar servidores MCP por domínio.
+
+### Segurança e permissões
+
+- O agente nunca cria, atualiza nem exclui registros. Essa proibição é imposta pelo catálogo e pelo executor de ferramentas, não apenas por uma instrução textual ao LLM.
+- Ferramentas de consulta devem respeitar as permissões do usuário autenticado (RBAC e escopo do registro), com validação no backend e no serviço de destino. Não basta esconder ferramentas do modelo.
+- **Financeiro inicial:** apenas consultas pontuais e autorizadas de pedidos, como valor total ou situação de pagamento. Faturamento global, margens, contas bancárias e análises financeiras profundas ficariam fora do catálogo inicial. Ampliação exigiria avaliação adicional de segurança e privacidade.
+- Perguntas ambíguas pedem esclarecimento; valores devem vir da ferramenta e não ser inventados pelo modelo. Procedimentos devem ser fundamentados em documentação autorizada. Nenhum conteúdo retornado por uma ferramenta pode conceder novas permissões ao agente.
+
+### Cache, falhas, custo e observabilidade
+
+Quando o provedor de LLM falhar, as consultas simples continuam funcionando pelo interpretador local. Se o ERP estiver fora do ar, o Service **poderia** oferecer o último saldo conhecido apenas para dados cuja política de negócio permita cache antigo, com origem e horário de atualização visíveis. A hipótese de 30–60 minutos é ilustrativa para estoques pouco movimentados, **não um TTL definido para todos os produtos**. Dados antigos nunca devem ser tratados como saldo atual para efetivar uma venda ou reserva.
+
+Antes de escolher um modelo ou provedor, avaliaria custo por tokens, cotas, volume, latência, privacidade e opções de hospedagem. Métricas propostas: uso de tokens/custo por funcionalidade, tempos p50/p95/p99, falhas de ferramentas, cache hit rate, taxa de fallback e rejeições de autorização. Prefiro **logs de metadados e IDs de correlação**, sem armazenar automaticamente prompts, respostas e dados financeiros sensíveis; qualquer auditoria de conteúdo exigiria política de acesso e retenção.
+
+**Documento completo:** [ADR-006 — Evolução para LLM, Tool Calling e MCP](docs/adr/ADR-006-llm-mcp-guardrails-observabilidade.md). Ele diferencia claramente decisões de design e comportamento já implementado. Nenhum serviço MCP, adaptador de LLM ou ferramenta financeira foi implementado nesta etapa.
+
 ## Próximas etapas e verificações complementares
 
 ### Implementações seguintes
 
 - **Questão 8:** escopo do Caminho A concluído e validado localmente conforme a seção acima; pendente apenas decisão posterior sobre merge na `main` e eventual confirmação da CI remota.
-- **Questão 9:** documentar e avaliar integração futura com LLM, ferramentas/tool calls/MCP e controles de segurança.
+- **Questão 9:** desenho teórico concluído no ADR-006: LLM plugável, tool calling, MCP central, guardrails, cache, custo, latência e observabilidade. A implementação real não faz parte desta etapa.
 - **Questões 10 e 11:** concluir os entregáveis previstos no enunciado, incluindo proposta conceitual em Go, portfólio e reflexão final.
 
 ### Verificações complementares
@@ -298,6 +337,7 @@ A documentação distingue o que foi **implementado**, o que foi **validado loca
 - [ADR-003 — Concorrência e resiliência](docs/adr/ADR-003-concorrencia-resiliencia.md)
 - [ADR-004 — Produtos, Estoque, JWT e inicialização](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md)
 - [ADR-005 — Agente determinístico de consultas ao ERP](docs/adr/ADR-005-agente-deterministico-consultas-erp.md)
+- [ADR-006 — Evolução para LLM, Tool Calling e MCP (Questão 9)](docs/adr/ADR-006-llm-mcp-guardrails-observabilidade.md)
 - [Uso de IA — Registro de apoio e responsabilidades](docs/USO-DE-IA.md)
 
 Utilizei o ChatGPT para estudo, questionamentos, alternativas de arquitetura, redação de documentos, propostas de implementação, testes e revisão. As escolhas e revisões estão registradas nos ADRs, e os resultados de testes somente serão declarados quando efetivamente verificados.
