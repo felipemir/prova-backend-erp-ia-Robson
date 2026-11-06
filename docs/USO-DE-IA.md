@@ -68,3 +68,14 @@ O primeiro alerta falhou no worker com `NoReferencedTableError`; a IA ajudou a i
 Refatorei depois a suíte: **17 testes passaram na execução local informada**, mantendo quatro testes de regras de estoque que percorrem 14 cenários. Também fiz uma reinicialização do zero com apenas `docker compose up`, após remover os volumes, e acrescentei um serviço `ready` para sinalizar a inicialização quando a API estiver saudável e o worker iniciado. A IA revisou os arquivos enviados ao GitHub e auxiliou a atualizar a documentação, mas **não executou o Docker local nem conferiu um resultado de CI remota** nesta etapa. Esses resultados são evidências das execuções realizadas e informadas por mim, não validações remotas independentes.
 
 Ainda existem limites: `ON DELETE CASCADE` apaga o histórico de alertas ao excluir um produto, e a gravação no banco e o enfileiramento Redis não são transacionais entre si. A documentação diferencia resultados observados, comportamento implementado e evoluções propostas.
+
+
+## Questão 8 — Agente determinístico e revisão das mensagens
+
+Estudei com o ChatGPT a decomposição de perguntas em intenção, campo, operador e valor, a extração por regex e a diferença entre comparações estritas e inclusivas. Discutimos que uma busca com resultados vazios não significa erro, e que um interpretador que não entende uma frase não deve inventar uma consulta. Escolhi um interpretador com um único filtro por pergunta (Caminho A) e deixei filtros compostos, ranking, identificação de produtos e LLM adaptável para evolução futura (Caminho B).
+
+Após autorizar a implementação, o ChatGPT gerou os módulos, os testes iniciais e o ADR-005. Quando identifiquei que o trabalho havia sido colocado na branch errada, pedi a separação das alterações: o agente foi isolado em `feat/agent-deterministic-query`, enquanto as Questões 6 e 7 foram incorporadas à `main` sem a Questão 8.
+
+O primeiro teste no container não encontrou `tests/test_agent.py`, pois o Dockerfile não copia a pasta `tests/`. Com ajuda do Codex, identifiquei a causa e executei os testes com a pasta montada: **20 passaram em 0,84 s**. Em seguida testei manualmente no Swagger, usando autenticação JWT e o PostgreSQL reais, consultas de estoque, filtros de preço e resultados vazios. As capturas e os resultados foram discutidos com o ChatGPT. A evolução proposta posteriormente acrescenta um campo de situação e uma mensagem explicativa para resultados encontrados/vazios e orientações nos erros 422. O ChatGPT criou novos testes e atualizou o README e o ADR-005; **esses ajustes posteriores ainda precisam ser testados novamente**.
+
+O registro diferencia a validação inicial observada e as modificações novas que aguardam revalidação. O ChatGPT não executou o Docker no meu computador.
