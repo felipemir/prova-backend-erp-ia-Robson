@@ -49,10 +49,10 @@ def interpretar(pergunta: str) -> ConsultaInterpretada:
     texto = _normalizar(pergunta)
     # Múltiplas condições e negações requerem interpretação mais complexa.
     if re.search(r"\b(e|ou|nao|exceto)\b", texto):
-        raise ValueError("A primeira versão aceita apenas uma condição afirmativa por pergunta.")
+        raise ValueError("Consulta não suportada: informe apenas uma condição, sem E/OU ou negação. Exemplo: Estoque abaixo de 10.")
     encontrados = list(PADRAO.finditer(texto))
     if len(encontrados) != 1:
-        raise ValueError("Pergunta não reconhecida. Informe estoque ou preço, comparação e valor.")
+        raise ValueError("Não consegui interpretar a consulta. Informe explicitamente estoque ou preço, operador e número. Exemplos: Estoque abaixo de 10; Preço acima de 200. Rankings e nomes de produtos não são suportados nesta versão.")
     match = encontrados[0]
     # Não interpretar parcialmente valores que não foram compreendidos.
     numeros = re.findall(r"\d+(?:[.,]\d+)?", texto)
