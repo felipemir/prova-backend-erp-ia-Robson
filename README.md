@@ -15,7 +15,8 @@ O projeto utiliza FastAPI modular, PostgreSQL, Redis, autenticação JWT, proces
 | 5 | Escopo a conferir no enunciado | Não classificada neste README |
 | 6 | API de Produtos, Estoque e JWT | Implementada e validada nos principais fluxos locais |
 | 7 | Docker Compose e inicialização | Implementada e validada localmente |
-| 8–11 | Etapas posteriores | Pendentes |
+| 8 | Agente determinístico para consultas ao ERP | Implementação inicial publicada; testes novos aguardam execução local |
+| 9–11 | Etapas posteriores | Pendentes |
 
 **Evidências locais:** depois de consolidar a suíte, **17 testes passaram**, segundo a execução relatada pelo autor; 4 testes de regras percorrem 14 cenários de estoque. O ambiente foi recriado com volumes novos usando apenas `docker compose up`, com migrations e seed automáticos. O workflow GitHub Actions está configurado, mas seu resultado remoto ainda não foi confirmado.
 
@@ -169,13 +170,179 @@ Também é possível executar `python -m pytest -q` diretamente, desde que as de
 
 O Dockerfile não copia `tests/` por padrão; o comando acima monta a pasta somente para testes. **Resultado local informado após a refatoração: 17 testes aprovados.** O arquivo `test_stock_rules.py` contém 4 funções que verificam 14 cenários; a quantidade de testes coletados pelo pytest não é a quantidade de cenários percorridos. A execução não substitui a análise de casos não cobertos.
 
+## Parte 5 — Agente determinístico de consultas (Questão 8)
+
+**Escopo da versão A:** interpretador local determinístico, sem chamadas a APIs de LLM, que reconhece **uma única condição afirmativa** de estoque ou preço. Uma pergunta em português é convertida em intenção + filtro estruturado; o Service coordena e o Repository consulta os dados reais de `products` no PostgreSQL usando expressões SQLAlchemy, sem executar SQL fornecido pelo usuário.
+
+### Como iniciar e testar no Swagger
+
+1. Na raiz do projeto, em um primeiro clone, execute `docker compose up` (ele constrói as imagens ausentes). Se você **alterou o código** desde a última construção, execute `docker compose up -d --build` para incluir as mudanças na imagem. Aguarde `api` saudável em `docker compose ps`. Nenhum dos comandos apaga os volumes.
+2. Acesse [Swagger](http://localhost:8000/docs).
+3. Use **POST /auth/login** (formulário) com o usuário demonstrativo `employee@example.test` e senha `LocalEmployee123!` (somente ambiente local). Copie o `access_token` ou use **Authorize** com essas credenciais.
+4. Abra **POST /agent/query**, clique em **Try it out**, cole o JSON abaixo e clique em **Execute**. Observe o código HTTP e o bloco **Server response → Response body**; o bloco **Responses → Example Value** é apenas um exemplo do esquema, não os dados consultados.
+
+```json
+{"pergunta": "Quais produtos estão com estoque abaixo de 10 unidades?"}
+```
+
+A resposta contém `intencao`, `filtros`, `situacao`, `mensagem`, `total`, `produtos` e `limite`. O filtro informa `campo` (`preco` ou `quantidade_em_estoque`), `operador` e `valor`. Produtos são ordenados por ID, com **limite máximo de 50 por consulta**; `total` considera todos os registros correspondentes, não apenas os 50 retornados. Não há paginação por cursor nesta versão.
+
+### Exemplos para experimentar
+
+| JSON: valor da chave `pergunta` | Interpretação | Resultado na seed inicial |
+| --- | --- | --- |
+| `Quais produtos estão com estoque abaixo de 10 unidades?` | Estoque `< 10` | 3 (Mouse, Headset, Webcam) |
+| `Quero produtos com preço acima de 200 reais` | Preço `> 200` | 4 (Notebook, Monitor, Teclado, Headset) |
+| `Quais produtos têm preço abaixo de 100 reais?` | Preço `< 100` | 0; consulta válida |
+| `Quais produtos têm preço abaixo de 150 reais?` | Preço `< 150` | 1 (Mouse) |
+| `Quais produtos têm preço abaixo de 190 reais?` | Preço `< 190` | 2 (Mouse, Webcam) |
+| `Estoque no máximo 5` | Estoque `<= 5` | 2 (Headset, Webcam) |
+| `Estoque no mínimo 13` | Estoque `>= 13` | 2 (Notebook, Monitor) |
+| `Preço igual a 149,90` | Preço `= 149.90` | 1 (Mouse) |
+| `Qual produto é o mais caro?` | Ranking não suportado | HTTP 422 |
+| `Estoque abaixo de 5 e preço acima de 100` | Duas condições não suportadas | HTTP 422 |
+| `Qual produto abaixo de 100 reais?` | Campo implícito, não suportado | HTTP 422 |
+
+**Observação:** os resultados numéricos da tabela pressupõem a seed inicial intacta; se produtos forem criados/alterados, a resposta acompanha os dados reais do banco.
+
+As expressões reconhecidas são: **abaixo de, menor que, inferior a, menos de** (`<`); **acima de, maior que, superior a, mais de** (`>`); **igual a, exatamente** (`=`); **no mínimo** (`>=`); **no máximo** (`<=`). É necessário informar o campo (`estoque` / `quantidade em estoque` ou `preço` / `valor`) imediatamente antes da expressão. Acentos e maiúsculas são normalizados. Estoque aceita inteiros não negativos, preço aceita decimal com uma ou duas casas, usando vírgula ou ponto, sem separador de milhar.
+
+### Significado das respostas HTTP
+
+**200, produtos encontrados:**
+
+```json
+{
+  "intencao": "consultar_produtos",
+  "filtros": [{"campo": "preco", "operador": "<", "valor": "150"}],
+  "situacao": "encontrado",
+  "mensagem": "1 produto(s) encontrado(s) para preço abaixo de 150.",
+  "total": 1,
+  "produtos": [
+    {
+      "id": 4,
+      "nome": "Mouse sem fio",
+      "preco": "149.90",
+      "quantidade_em_estoque": 8,
+      "data_criacao": "<data ISO 8601>",
+      "data_atualizacao": "<data ISO 8601>",
+      "situacao_estoque": "estoque_baixo",
+      "alerta": "Estoque baixo"
+    }
+  ],
+  "limite": 50
+}
+```
+
+**200, pergunta compreendida mas sem correspondências:** não é uma falha; o banco respondeu corretamente à consulta.
+
+```json
+{
+  "intencao": "consultar_produtos",
+  "filtros": [{"campo": "preco", "operador": "<", "valor": "100"}],
+  "situacao": "sem_resultados",
+  "mensagem": "Nenhum produto encontrado para preço abaixo de 100.",
+  "total": 0,
+  "produtos": [],
+  "limite": 50
+}
+```
+
+**422, pergunta não suportada:** o interpretador não inventa uma intenção nem faz consulta parcial. Exemplo: `Qual produto é o mais caro?` gera erro explicativo com sugestões de formato, como `Estoque abaixo de 10` ou `Preço acima de 200`. Perguntas com `E`/`OU` ou negação também são rejeitadas. **401** indica token ausente ou inválido. O **422** também pode ocorrer por payload JSON inválido, como `pergunta` vazia, caso em que a validação do FastAPI/Pydantic fornece os detalhes.
+
+### Executar testes automatizados
+
+O `Dockerfile` **não copia a pasta `tests/` para a imagem da API**. Por isso, `docker compose exec api pytest tests/test_agent.py` sem volume montado produz `file or directory not found`. A maneira reproduzível de testar sem modificar a imagem é:
+
+```bash
+docker compose up -d --build
+docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q -p no:cacheprovider tests/test_agent.py
+# Para executar toda a suíte:
+docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q -p no:cacheprovider
+```
+
+A pasta é montada somente para leitura; os testes de integração de API do agente usam SQLite em memória e substituem as dependências de banco/autenticação, enquanto os testes manuais acima foram executados com JWT e PostgreSQL reais.
+
+**Evidência informada pelo autor em 05/11/2026:** a versão inicial do agente passou em **20 testes em 0,84 s** com `tests/` montada. Também foram observados pelo Swagger, usando JWT e PostgreSQL reais, os casos estoque `< 10` (3 registros), preço `> 200` (4), preço `< 100` (0), preço `< 150` (1) e preço `< 190` (2), além de perguntas não suportadas recebendo HTTP 422. **Revalidação final informada pelo autor (05/11/2026):** após a inclusão de `situacao`/`mensagem` e novos casos de teste, o autor confirmou que a suíte executada novamente passou, sem enviar a contagem/saída detalhada desta última execução. O Swagger confirmou a resposta nova para preço abaixo de 100 com HTTP 200, `situacao: "sem_resultados"`, mensagem explicativa, `total: 0` e lista vazia, usando JWT e PostgreSQL reais. A validação local do Caminho A está concluída para os cenários documentados. **A CI remota ainda não foi confirmada; o merge da Questão 8 na `main` não foi realizado.**
+
+### Limites e caminhos futuros
+
+**Caminho A:** somente uma condição por pergunta, sem contexto, nomes específicos de produtos, ranking `mais caro`, preço implícito por `reais`, números por extenso, SQL livre ou operações de escrita. O interpretador rejeita o que não entende.
+
+**Caminho B (proposta, não implementada):** condições compostas `AND`/`OR`, identificação/desambiguação de produtos, contexto e referências como `o segundo`, adaptador de LLM produzindo o mesmo contrato validado, observabilidade, paginação e métricas. As decisões estão no [ADR-005](docs/adr/ADR-005-agente-deterministico-consultas-erp.md).
+
+## Parte 5 — Evolução plugável para LLM, ferramentas e MCP (Questão 9)
+
+> **Status: proposta teórica/design — não implementada.** A prova não exige integração com um LLM real nesta etapa. A versão executável continua sendo o agente determinístico da Questão 8.
+
+### Decisão arquitetural
+
+Eu adotaria uma **arquitetura híbrida**: o interpretador determinístico atende perguntas simples que reconhece integralmente; perguntas mais complexas podem ser encaminhadas a um adaptador plugável de LLM. O LLM **propõe** uma ferramenta de consulta e seus argumentos, mas nunca executa SQL livre nem tem acesso direto ao PostgreSQL. O backend valida schema, autorização e limites, encaminha a consulta ao Service e retorna os dados estruturados.
+
+```text
+Funcionário com JWT
+    → API / orquestrador
+      ├─→ Interpretador determinístico (Questão 8)
+      │     → Service → Repository → PostgreSQL
+      └─→ Adaptador de LLM (futuro)
+            → validação de tool calling e autorização
+            → cliente MCP → servidor MCP central
+            → APIs/Services: Produtos, Pedidos, Financeiro
+            → retorno estruturado e fundamentado
+```
+
+**Ferramentas propostas (somente leitura):** `consultar_produtos`, `consultar_estoque`, `consultar_pedido`, `consultar_valor_pedido` e `consultar_documentacao`. Cada ferramenta teria um contrato tipado, com argumentos validados, campos permitidos, limites de resultados e verificação de autorização. Ferramentas como `criar_pedido`, `atualizar_produto` e `excluir_pedidos` **não seriam expostas**, mesmo para usuários administradores.
+
+**MCP central:** para os três domínios iniciais, prefiro um único servidor MCP publicando as ferramentas consultivas, sem concentrar regras de negócio. O MCP é a camada de adaptação; cada serviço continua responsável pelos dados e permissões. Em caso de aumento de carga ou autonomia de equipes, seria possível separar servidores MCP por domínio.
+
+### Segurança e permissões
+
+- O agente nunca cria, atualiza nem exclui registros. Essa proibição é imposta pelo catálogo e pelo executor de ferramentas, não apenas por uma instrução textual ao LLM.
+- Ferramentas de consulta devem respeitar as permissões do usuário autenticado (RBAC e escopo do registro), com validação no backend e no serviço de destino. Não basta esconder ferramentas do modelo.
+- **Financeiro inicial:** apenas consultas pontuais e autorizadas de pedidos, como valor total ou situação de pagamento. Faturamento global, margens, contas bancárias e análises financeiras profundas ficariam fora do catálogo inicial. Ampliação exigiria avaliação adicional de segurança e privacidade.
+- Perguntas ambíguas pedem esclarecimento; valores devem vir da ferramenta e não ser inventados pelo modelo. Procedimentos devem ser fundamentados em documentação autorizada. Nenhum conteúdo retornado por uma ferramenta pode conceder novas permissões ao agente.
+
+### Cache, falhas, custo e observabilidade
+
+Quando o provedor de LLM falhar, as consultas simples continuam funcionando pelo interpretador local. Se o ERP estiver fora do ar, o Service **poderia** oferecer o último saldo conhecido apenas para dados cuja política de negócio permita cache antigo, com origem e horário de atualização visíveis. A hipótese de 30–60 minutos é ilustrativa para estoques pouco movimentados, **não um TTL definido para todos os produtos**. Dados antigos nunca devem ser tratados como saldo atual para efetivar uma venda ou reserva.
+
+Antes de escolher um modelo ou provedor, avaliaria custo por tokens, cotas, volume, latência, privacidade e opções de hospedagem. Métricas propostas: uso de tokens/custo por funcionalidade, tempos p50/p95/p99, falhas de ferramentas, cache hit rate, taxa de fallback e rejeições de autorização. Prefiro **logs de metadados e IDs de correlação**, sem armazenar automaticamente prompts, respostas e dados financeiros sensíveis; qualquer auditoria de conteúdo exigiria política de acesso e retenção.
+
+**Documento completo:** [ADR-006 — Evolução para LLM, Tool Calling e MCP](docs/adr/ADR-006-llm-mcp-guardrails-observabilidade.md). Ele diferencia claramente decisões de design e comportamento já implementado. Nenhum serviço MCP, adaptador de LLM ou ferramenta financeira foi implementado nesta etapa.
+
+## Parte 6 — Avaliação de Go para processamento de eventos (Questão 10)
+
+> **Status: resposta teórica/documental.** Não foi criado um serviço Go nem houve migração, benchmark ou alteração no processamento existente.
+
+### Posicionamento e decisão
+
+Eu aceitaria com interesse o desafio de desenvolver em Go, linguagem que tenho vontade de aprender. Entretanto, **não escolheria uma tecnologia apenas por expectativa de desempenho**. Antes de migrar um consumidor de eventos Python, instrumentaria o pipeline para analisar throughput, latências p95/p99, backlog da fila, CPU, memória, tempo em banco e chamadas externas, erros e custo de infraestrutura.
+
+Go pode ser adequado para processamento concorrente e tarefas exigentes em CPU, mas o comportamento depende da carga real; se o gargalo estiver em I/O, no broker ou no PostgreSQL, uma reescrita pode não resolver. O volume hipotético de 100 mil eventos/minuto, sozinho, não prova que Python seja insuficiente. Eu também avaliaria otimizações da solução Python atual.
+
+### Protótipo antes da migração
+
+Minha proposta seria começar com um **consumidor pequeno em Go** para um tipo representativo de evento, comparando Go e Python sob as mesmas entradas, regras e recursos. Mediria throughput, latência, CPU, memória, custo e estabilidade, além de testar idempotência, duplicações, retries, falhas e integridade dos dados. Só consideraria um rollout gradual se os resultados justificassem a complexidade adicional e houvesse plano de rollback.
+
+Um eventual ganho de desempenho não encerraria a avaliação: a equipe precisaria conseguir **manter e operar** o serviço. Consideraria o risco de concentrar conhecimento em poucas pessoas (*bus factor*), documentação, revisões, pareamento e treinamento. Se discordasse da adoção de Go, apresentaria esses argumentos com métricas e alternativas, sem transformar a discussão em preferência pessoal.
+
+### Aprendizado e qualidade
+
+- **Semana 1:** fundamentos de Go (`struct`, interfaces, erros, módulos, testes), aprendidos em paralelo à construção de um consumidor simples de eventos fictícios.
+- **Semana 2:** goroutines, channels, contextos de cancelamento, controle de concorrência, tratamento de falhas, segurança, testes de corrida (`go test -race`), benchmarks e revisão de código.
+
+A proposta prioriza aprender construindo, com feedback de quem conhece a linguagem e testes desde o início. A entrega real dependeria de critérios de aceitação, CI, observabilidade, consistência de eventos e capacidade de manutenção da equipe.
+
+**Documento completo:** [ADR-007 — Avaliação de Go para processamento de eventos](docs/adr/ADR-007-adocao-go-processamento-eventos.md). Os números utilizados nos exemplos de discussão são hipotéticos, não medições efetuadas neste projeto.
+
 ## Próximas etapas e verificações complementares
 
 ### Implementações seguintes
 
-- **Questão 8:** desenvolver o agente para consultas em linguagem natural sobre os dados do ERP, conforme o enunciado.
-- **Questão 9:** documentar e avaliar integração futura com LLM, ferramentas/tool calls/MCP e controles de segurança.
-- **Questões 10 e 11:** concluir os entregáveis previstos no enunciado, incluindo proposta conceitual em Go, portfólio e reflexão final.
+- **Questão 8:** escopo do Caminho A concluído e validado localmente conforme a seção acima; pendente apenas decisão posterior sobre merge na `main` e eventual confirmação da CI remota.
+- **Questão 9:** desenho teórico concluído no ADR-006: LLM plugável, tool calling, MCP central, guardrails, cache, custo, latência e observabilidade. A implementação real não faz parte desta etapa.
+- **Questão 10:** resposta teórica registrada no ADR-007: postura diante de Go, critérios técnicos, protótipo comparativo, riscos de manutenção e aprendizado em duas semanas; nenhuma implementação Go foi realizada.
+- **Questão 11:** concluir os entregáveis previstos no enunciado, incluindo portfólio e reflexão final.
 
 ### Verificações complementares
 
@@ -195,6 +362,9 @@ A documentação distingue o que foi **implementado**, o que foi **validado loca
 - [ADR-002 — Organização do FastAPI](docs/adr/ADR-002-organizacao-fastapi.md)
 - [ADR-003 — Concorrência e resiliência](docs/adr/ADR-003-concorrencia-resiliencia.md)
 - [ADR-004 — Produtos, Estoque, JWT e inicialização](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md)
+- [ADR-005 — Agente determinístico de consultas ao ERP](docs/adr/ADR-005-agente-deterministico-consultas-erp.md)
+- [ADR-006 — Evolução para LLM, Tool Calling e MCP (Questão 9)](docs/adr/ADR-006-llm-mcp-guardrails-observabilidade.md)
+- [ADR-007 — Avaliação de Go para processamento de eventos (Questão 10)](docs/adr/ADR-007-adocao-go-processamento-eventos.md)
 - [Uso de IA — Registro de apoio e responsabilidades](docs/USO-DE-IA.md)
 
 Utilizei o ChatGPT para estudo, questionamentos, alternativas de arquitetura, redação de documentos, propostas de implementação, testes e revisão. As escolhas e revisões estão registradas nos ADRs, e os resultados de testes somente serão declarados quando efetivamente verificados.
