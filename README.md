@@ -20,7 +20,7 @@ O projeto utiliza FastAPI modular, PostgreSQL, Redis, autenticação JWT, proces
 | 10 | Avaliação de Go | Resposta teórica concluída — ADR-007 |
 | 11 | Portfólio | Publicado e documentado — NERVA Build |
 
-**Evidências locais:** depois de consolidar a suíte, **17 testes passaram**, segundo a execução relatada pelo autor; 4 testes de regras percorrem 14 cenários de estoque. O ambiente foi recriado com volumes novos usando apenas `docker compose up`, com migrations e seed automáticos. O GitHub Actions apresentou falhas remotas no comando de inicialização com `--wait`, apesar de a API e as dependências terem iniciado; o workflow foi corrigido em 06/11 para respeitar serviços one-shot e passou a executar na `main`. O resultado da nova execução precisa ser observado na aba Actions.
+**Evidências locais:** depois de consolidar a suíte, **17 testes passaram**, segundo a execução relatada pelo autor; 4 testes de regras percorrem 14 cenários de estoque. O ambiente foi recriado com volumes novos usando apenas `docker compose up`, com migrations e seed automáticos. **CI remota validada em 06/11/2026:** após corrigir a verificação de serviços one-shot no Compose e o tratamento do verbo “é” no interpretador, o [GitHub Actions concluiu com sucesso](https://github.com/felipemir/prova-backend-erp-ia-Robson/actions/runs/42158291257): **39 testes aprovados, 2 avisos não bloqueantes**, com inicialização, migrations/seed e testes de integração executados. Resultado comprovado para o commit [`ca4c72e`](https://github.com/felipemir/prova-backend-erp-ia-Robson/commit/ca4c72e08de5f90a1ba58c92a26cbee38d8ab826).
 
 As validações locais e limitações técnicas são descritas abaixo e no [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md).
 
@@ -76,7 +76,7 @@ Código: `app/modules/orders/`, `app/integrations/mock_services.py`, `app/integr
 
 ## Parte 3 — Produtos, Estoque e JWT (Questão 6)
 
-> **Status:** implementação concluída para o escopo desenvolvido, com validação manual de seus fluxos principais e 17 testes aprovados na execução local informada pelo autor. A CI remota ainda requer verificação.
+> **Status:** implementação concluída para o escopo desenvolvido, com validação manual de seus fluxos principais e 17 testes aprovados na execução local informada pelo autor. A CI remota foi aprovada posteriormente, com 39 testes em 06/11/2026.
 
 ### Funcionalidades implementadas
 
@@ -112,7 +112,7 @@ Os campos de cadastro de funcionários e as credenciais iniciais são demonstrat
 
 **Evidências locais (05/11/2026):** com Postman, foram verificados login de admin e funcionário (`200`), acesso sem token (`401`), CRUD de produto e exclusão restrita ao administrador (`403` para funcionário, `204` para admin e `404` após exclusão), cadastro abaixo de 12 unidades (`422`), classificação de estoque, filtros por nome/preço/estoque baixo e paginação. O Redis apresentou uma chave preenchida após `GET /products/{id}` e ausência da chave após o PATCH (consistente com invalidação, mas o TTL também poderia explicar ausência tardia). O RQ recebeu e processou alertas reais, persistidos em `stock_alerts`; a alteração dentro da mesma faixa não gerou alerta. A primeira tentativa de alerta falhou porque a tabela `products` não estava registrada no metadata do worker; o import do modelo foi corrigido e as transições posteriores funcionaram. Após a refatoração, o autor informou **17 testes aprovados** no pytest.
 
-**CI:** `.github/workflows/integration.yml` constrói o Compose, executa novamente init/seed e a suíte. A execução antiga falhou no passo `docker compose up --wait`, que tratava inadequadamente os serviços `init`/`ready` de execução única; houve alteração no workflow em 06/11 e nova execução na `main`, cujo resultado deve ser conferido no GitHub Actions. **Limitação de histórico:** a exclusão física de produto aciona `ON DELETE CASCADE` e remove alertas associados; isso deve ser considerado para evolução/auditoria.
+**CI:** `.github/workflows/integration.yml` constrói o Compose, executa novamente init/seed e a suíte. As falhas iniciais foram diagnosticadas e corrigidas; a execução final em 06/11/2026 teve **39 testes aprovados** e os passos de inicialização e migrations/seed concluídos: [logs da CI](https://github.com/felipemir/prova-backend-erp-ia-Robson/actions/runs/42158291257). **Limitação de histórico:** a exclusão física de produto aciona `ON DELETE CASCADE` e remove alertas associados; isso deve ser considerado para evolução/auditoria.
 
 Decisões técnicas: [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md).
 
@@ -170,7 +170,7 @@ docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -
 
 Também é possível executar `python -m pytest -q` diretamente, desde que as dependências, variáveis de ambiente e os serviços de PostgreSQL/Redis estejam configurados e acessíveis.
 
-O Dockerfile não copia `tests/` por padrão; o comando acima monta a pasta somente para testes. **Resultado local informado após a refatoração: 17 testes aprovados.** O arquivo `test_stock_rules.py` contém 4 funções que verificam 14 cenários; a quantidade de testes coletados pelo pytest não é a quantidade de cenários percorridos. A execução não substitui a análise de casos não cobertos.
+O Dockerfile não copia `tests/` por padrão; o comando acima monta a pasta somente para testes. **Resultado local informado após a refatoração inicial: 17 testes aprovados. Posteriormente, a suíte atual completa passou em CI remota com 39 testes em 06/11/2026.** O arquivo `test_stock_rules.py` contém 4 funções que verificam 14 cenários; a quantidade de testes coletados pelo pytest não é a quantidade de cenários percorridos. A execução não substitui a análise de casos não cobertos.
 
 ## Parte 5 — Agente determinístico de consultas (Questão 8)
 
@@ -554,7 +554,7 @@ As **Questões 1, 2, 3, 9, 10 e 11** foram respondidas teoricamente ou por portf
 
 ### Verificações feitas e limitações conscientes
 
-- **CI remota:** as execuções antigas do GitHub Actions falharam durante o comando `docker compose up -d --build --wait`. O log mostrava API, PostgreSQL e Redis saudáveis, além de `ready` encerrado com código 0. Ajustei o workflow para inicializar em modo detached e verificar a prontidão com `docker compose run --rm ready`, e incluí disparo por push na `main`. A nova execução deve ser observada em [Actions](https://github.com/felipemir/prova-backend-erp-ia-Robson/actions); não declaro sucesso sem conferir a conclusão.
+- **CI remota — resolvida:** as primeiras execuções falharam no uso de `docker compose up -d --build --wait` com serviços one-shot. Substituí a sequência por `docker compose up -d --build` seguido de `docker compose run --rm ready`; depois corrigi a interpretação de `é` no agente (o teste de erro foi detectado pela CI). A execução final na `main` passou com **39 testes, 2 avisos não bloqueantes**, além de inicialização e seed aprovadas: [execução #42158291257](https://github.com/felipemir/prova-backend-erp-ia-Robson/actions/runs/42158291257).
 - **Alertas e exclusão:** `ON DELETE CASCADE` apaga os alertas associados ao produto excluído. A API atual funciona conforme essa regra, porém **perder histórico de auditoria é uma limitação real**. Migrar para exclusão lógica e/ou preservar snapshots seria evolução futura; não altero o domínio antes da entrega sem migration e testes adequados.
 - **Limite entre transação e fila:** persistir o estoque e enfileirar alerta no Redis não é uma operação atômica. Uma Transactional Outbox é proposta futura, não implementada.
 - **AWS e frontend:** são melhorias opcionais para este enunciado; o frontend não é exigido (texto: `front, se aplicável`) e não existe deploy AWS neste projeto.
