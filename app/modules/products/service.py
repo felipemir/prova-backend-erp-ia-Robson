@@ -27,6 +27,8 @@ def update_product(db: Session, product_id: int, data: ProductPatch) -> Product:
     changes = data.model_dump(exclude_unset=True)
     for key, value in changes.items():
         setattr(product, key, value)
+    # O commit precede a invalidação do cache e o enqueue: sem outbox,
+    # uma falha no Redis pode deixar o estoque atualizado sem alerta.
     db.commit()
     db.refresh(product)
     cache_invalidate(product.id)
