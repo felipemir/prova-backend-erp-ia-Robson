@@ -1,21 +1,27 @@
+x-app-env: &app-env
+  DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-erp}:${POSTGRES_PASSWORD:-local_dev_only_change_me}@postgres:5432/${POSTGRES_DB:-erp}"
+  REDIS_URL: "redis://redis:6379/0"
+  JWT_SECRET: "${JWT_SECRET:-local_development_secret_change_me_please_12345}"
+  DEMO_ADMIN_EMAIL: "${DEMO_ADMIN_EMAIL:-admin@example.test}"
+  DEMO_ADMIN_PASSWORD: "${DEMO_ADMIN_PASSWORD:-LocalAdmin123!}"
+  DEMO_EMPLOYEE_EMAIL: "${DEMO_EMPLOYEE_EMAIL:-employee@example.test}"
+  DEMO_EMPLOYEE_PASSWORD: "${DEMO_EMPLOYEE_PASSWORD:-LocalEmployee123!}"
+  JWT_EXPIRE_MINUTES: "${JWT_EXPIRE_MINUTES:-60}"
+  CACHE_TTL_SECONDS: "${CACHE_TTL_SECONDS:-60}"
+
 services:
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     environment:
-      DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-erp}:${POSTGRES_PASSWORD:-local_dev_only_change_me}@postgres:5432/${POSTGRES_DB:-erp}"
-      REDIS_URL: "redis://redis:6379/0"
+      <<: *app-env
       REQUEST_TIMEOUT: "${REQUEST_TIMEOUT:-2.0}"
       MAX_ATTEMPTS: "${MAX_ATTEMPTS:-3}"
       BACKOFF_BASE: "${BACKOFF_BASE:-0.5}"
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 10s
@@ -23,7 +29,16 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
-
+  init:
+    build: .
+    command: ["sh", "-c", "alembic upgrade head && python -m app.seed"]
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
   postgres:
     image: postgres:16-alpine
     environment:
@@ -32,8 +47,7 @@ services:
       POSTGRES_DB: "${POSTGRES_DB:-erp}"
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
@@ -41,34 +55,33 @@ services:
       retries: 10
       start_period: 10s
     restart: unless-stopped
-
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis_data:/data
+    volumes: ["redis_data:/data"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 10
     restart: unless-stopped
-
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     command: ["rq", "worker", "--url", "redis://redis:6379/0", "default"]
-    environment:
-      DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-erp}:${POSTGRES_PASSWORD:-local_dev_only_change_me}@postgres:5432/${POSTGRES_DB:-erp}"
-      REDIS_URL: "redis://redis:6379/0"
+    environment: *app-env
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      init:
+        condition: service_completed_successfully
     restart: unless-stopped
-
+  ready:
+    build: .
+    command: ["python", "-c", "print('PROJETO INICIALIZADO CORRETAMENTE E PRONTO PARA TESTES')"]
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    restart: "no"
 volumes:
   postgres_data:
   redis_data:

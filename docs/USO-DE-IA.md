@@ -46,3 +46,25 @@ Utilizei o apoio da IA para acelerar o trabalho dentro do prazo, mas questionei 
 O código e os documentos incluem contribuições geradas ou redigidas com assistência do ChatGPT. Não atribuo à IA testes, pesquisas ou execuções que não tenham sido realizados ou verificados. Continuo responsável por entender, revisar, validar e apresentar a solução.
 
 Este registro deverá ser atualizado à medida que novas partes práticas forem implementadas.
+
+
+## Questão 6 — Implementação assistida por IA
+
+Após aprovar o ADR-004, autorizei o ChatGPT a iniciar a implementação da API de Produtos e Estoque e preparar uma pipeline no GitHub, mantendo o trabalho na branch `feat/products-stock-crud`. O ChatGPT produziu a primeira versão dos modelos, migrations Alembic, script de seed, endpoints CRUD, autenticação JWT e RBAC, cache Redis, integração com fila RQ, testes e workflow GitHub Actions. Minha participação anterior foi definir os requisitos e as regras de negócio detalhadas no ADR-004.
+
+Os limites são relevantes: compilei os arquivos localmente com auxílio da ferramenta, executei 14 testes isolados de regras de estoque e Pydantic, fiz um smoke test de migration/seed usando SQLite temporário e verifiquei hashing Argon2id e emissão/leitura de JWT para os dois perfis. A instalação de dependências adicionais não foi possível por indisponibilidade de rede no ambiente de testes. Não foi possível realizar nesta sessão testes reais com Docker Engine, PostgreSQL e Redis.
+
+O workflow `.github/workflows/integration.yml` foi adicionado à branch com gatilho em push, mas não recebi confirmação de conclusão da execução. O resultado da integração precisa ser verificado posteriormente na aba Actions. Não devo apresentar a simples publicação do workflow como evidência de testes aprovados.
+
+O código entregue está sujeito à revisão, correção e validação final. A responsabilidade de entender e apresentar as decisões permanece comigo, inclusive nos pontos em que a IA produziu trechos de implementação.
+
+
+## Atualização da validação prática (05/11/2026)
+
+Depois do primeiro registro, executei a implementação no Linux com containers reais. O ChatGPT me orientou na sequência de validação e analisou as saídas que compartilhei. Confirmei pelo Postman e por consultas aos containers o login dos dois perfis, as restrições de acesso, o CRUD, filtros e paginação, a classificação de estoque, a gravação de cache e alertas de estoque persistidos via Redis/RQ no PostgreSQL.
+
+O primeiro alerta falhou no worker com `NoReferencedTableError`; a IA ajudou a identificar o modelo `Product` não registrado no metadata e publicou um ajuste de import na branch, que validei posteriormente com novas transições de estoque. Essa falha e sua correção estão registradas no ADR-004.
+
+Refatorei depois a suíte: **17 testes passaram na execução local informada**, mantendo quatro testes de regras de estoque que percorrem 14 cenários. Também fiz uma reinicialização do zero com apenas `docker compose up`, após remover os volumes, e acrescentei um serviço `ready` para sinalizar a inicialização quando a API estiver saudável e o worker iniciado. A IA revisou os arquivos enviados ao GitHub e auxiliou a atualizar a documentação, mas **não executou o Docker local nem conferiu um resultado de CI remota** nesta etapa. Esses resultados são evidências das execuções realizadas e informadas por mim, não validações remotas independentes.
+
+Ainda existem limites: `ON DELETE CASCADE` apaga o histórico de alertas ao excluir um produto, e a gravação no banco e o enfileiramento Redis não são transacionais entre si. A documentação diferencia resultados observados, comportamento implementado e evoluções propostas.
