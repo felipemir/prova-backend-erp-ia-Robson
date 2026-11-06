@@ -15,7 +15,8 @@ O projeto utiliza FastAPI modular, PostgreSQL, Redis, autenticação JWT, proces
 | 5 | Escopo a conferir no enunciado | Não classificada neste README |
 | 6 | API de Produtos, Estoque e JWT | Implementada e validada nos principais fluxos locais |
 | 7 | Docker Compose e inicialização | Implementada e validada localmente |
-| 8–11 | Etapas posteriores | Pendentes |
+| 8 | Agente determinístico para consultas ao ERP | Implementação inicial publicada; testes novos aguardam execução local |
+| 9–11 | Etapas posteriores | Pendentes |
 
 **Evidências locais:** depois de consolidar a suíte, **17 testes passaram**, segundo a execução relatada pelo autor; 4 testes de regras percorrem 14 cenários de estoque. O ambiente foi recriado com volumes novos usando apenas `docker compose up`, com migrations e seed automáticos. O workflow GitHub Actions está configurado, mas seu resultado remoto ainda não foi confirmado.
 
@@ -169,11 +170,47 @@ Também é possível executar `python -m pytest -q` diretamente, desde que as de
 
 O Dockerfile não copia `tests/` por padrão; o comando acima monta a pasta somente para testes. **Resultado local informado após a refatoração: 17 testes aprovados.** O arquivo `test_stock_rules.py` contém 4 funções que verificam 14 cenários; a quantidade de testes coletados pelo pytest não é a quantidade de cenários percorridos. A execução não substitui a análise de casos não cobertos.
 
+## Parte 5 — Agente determinístico de consultas (Questão 8)
+
+**Implementação inicial — Caminho A:** um interpretador local recebe perguntas em português, identifica **um campo + operador + valor**, e devolve um JSON com os critérios interpretados e os produtos consultados no banco. Não utiliza OpenAI, Anthropic, serviço externo nem LLM.
+
+```http
+POST /agent/query
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Exemplo de corpo:
+
+```json
+{"pergunta": "Estoque abaixo de 5"}
+```
+
+A resposta contém `intencao`, `filtros` (com `campo`, `operador`, `valor`), `total`, `produtos` e `limite`. A lista de produtos é limitada aos primeiros **50 registros**, ordenados por ID; `total` indica quantos registros satisfazem a condição no banco.
+
+**Expressões reconhecidas (campo explícito antes do operador):**
+
+| Exemplos | Operador |
+| --- | --- |
+| `estoque abaixo de 5`, `preço menor que 100`, `inferior a`, `menos de` | `<` |
+| `preço acima de 200`, `maior que`, `superior a`, `mais de` | `>` |
+| `estoque igual a 0`, `preço exatamente 80` | `=` |
+| `estoque no mínimo 15` | `>=` |
+| `preço no máximo 100` | `<=` |
+
+O campo de estoque aceita inteiros não negativos; preços aceitam valores não negativos com até duas casas decimais, usando ponto ou vírgula. A interpretação normaliza maiúsculas e acentos. O usuário deve informar **estoque/quantidade em estoque ou preço/valor** antes da comparação.
+
+**Limitações intencionais:** apenas uma condição afirmativa por pergunta. A primeira versão não interpreta filtros com `E`/`OU`, nomes de produtos, histórico ou contexto de conversa, números por extenso, expressões complexas e operações de escrita. Perguntas não reconhecidas retornam HTTP `422` com explicação, sem tentar consultar parcialmente. O Service valida a interpretação; o Repository usa colunas e operadores permitidos no SQLAlchemy, sem SQL gerado da frase.
+
+O módulo foi adicionado à branch e inclui testes em `tests/test_agent.py`. **O resultado da execução da nova suíte ainda precisa ser confirmado no Docker local**; os 17 testes anteriormente aprovados são anteriores à adição do agente.
+
+As decisões do Caminho A e a evolução futura (Caminho B, com filtros compostos, desambiguação e contexto) estão registradas no [ADR-005](docs/adr/ADR-005-agente-deterministico-consultas-erp.md).
+
 ## Próximas etapas e verificações complementares
 
 ### Implementações seguintes
 
-- **Questão 8:** desenvolver o agente para consultas em linguagem natural sobre os dados do ERP, conforme o enunciado.
+- **Questão 8:** executar a nova suíte e validar o endpoint `POST /agent/query` no Docker local; ajustar eventuais falhas.
 - **Questão 9:** documentar e avaliar integração futura com LLM, ferramentas/tool calls/MCP e controles de segurança.
 - **Questões 10 e 11:** concluir os entregáveis previstos no enunciado, incluindo proposta conceitual em Go, portfólio e reflexão final.
 
@@ -195,6 +232,7 @@ A documentação distingue o que foi **implementado**, o que foi **validado loca
 - [ADR-002 — Organização do FastAPI](docs/adr/ADR-002-organizacao-fastapi.md)
 - [ADR-003 — Concorrência e resiliência](docs/adr/ADR-003-concorrencia-resiliencia.md)
 - [ADR-004 — Produtos, Estoque, JWT e inicialização](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md)
+- [ADR-005 — Agente determinístico de consultas ao ERP](docs/adr/ADR-005-agente-deterministico-consultas-erp.md)
 - [Uso de IA — Registro de apoio e responsabilidades](docs/USO-DE-IA.md)
 
 Utilizei o ChatGPT para estudo, questionamentos, alternativas de arquitetura, redação de documentos, propostas de implementação, testes e revisão. As escolhas e revisões estão registradas nos ADRs, e os resultados de testes somente serão declarados quando efetivamente verificados.
