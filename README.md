@@ -310,13 +310,39 @@ Antes de escolher um modelo ou provedor, avaliaria custo por tokens, cotas, volu
 
 **Documento completo:** [ADR-006 — Evolução para LLM, Tool Calling e MCP](docs/adr/ADR-006-llm-mcp-guardrails-observabilidade.md). Ele diferencia claramente decisões de design e comportamento já implementado. Nenhum serviço MCP, adaptador de LLM ou ferramenta financeira foi implementado nesta etapa.
 
+## Parte 6 — Avaliação de Go para processamento de eventos (Questão 10)
+
+> **Status: resposta teórica/documental.** Não foi criado um serviço Go nem houve migração, benchmark ou alteração no processamento existente.
+
+### Posicionamento e decisão
+
+Eu aceitaria com interesse o desafio de desenvolver em Go, linguagem que tenho vontade de aprender. Entretanto, **não escolheria uma tecnologia apenas por expectativa de desempenho**. Antes de migrar um consumidor de eventos Python, instrumentaria o pipeline para analisar throughput, latências p95/p99, backlog da fila, CPU, memória, tempo em banco e chamadas externas, erros e custo de infraestrutura.
+
+Go pode ser adequado para processamento concorrente e tarefas exigentes em CPU, mas o comportamento depende da carga real; se o gargalo estiver em I/O, no broker ou no PostgreSQL, uma reescrita pode não resolver. O volume hipotético de 100 mil eventos/minuto, sozinho, não prova que Python seja insuficiente. Eu também avaliaria otimizações da solução Python atual.
+
+### Protótipo antes da migração
+
+Minha proposta seria começar com um **consumidor pequeno em Go** para um tipo representativo de evento, comparando Go e Python sob as mesmas entradas, regras e recursos. Mediria throughput, latência, CPU, memória, custo e estabilidade, além de testar idempotência, duplicações, retries, falhas e integridade dos dados. Só consideraria um rollout gradual se os resultados justificassem a complexidade adicional e houvesse plano de rollback.
+
+Um eventual ganho de desempenho não encerraria a avaliação: a equipe precisaria conseguir **manter e operar** o serviço. Consideraria o risco de concentrar conhecimento em poucas pessoas (*bus factor*), documentação, revisões, pareamento e treinamento. Se discordasse da adoção de Go, apresentaria esses argumentos com métricas e alternativas, sem transformar a discussão em preferência pessoal.
+
+### Aprendizado e qualidade
+
+- **Semana 1:** fundamentos de Go (`struct`, interfaces, erros, módulos, testes), aprendidos em paralelo à construção de um consumidor simples de eventos fictícios.
+- **Semana 2:** goroutines, channels, contextos de cancelamento, controle de concorrência, tratamento de falhas, segurança, testes de corrida (`go test -race`), benchmarks e revisão de código.
+
+A proposta prioriza aprender construindo, com feedback de quem conhece a linguagem e testes desde o início. A entrega real dependeria de critérios de aceitação, CI, observabilidade, consistência de eventos e capacidade de manutenção da equipe.
+
+**Documento completo:** [ADR-007 — Avaliação de Go para processamento de eventos](docs/adr/ADR-007-adocao-go-processamento-eventos.md). Os números utilizados nos exemplos de discussão são hipotéticos, não medições efetuadas neste projeto.
+
 ## Próximas etapas e verificações complementares
 
 ### Implementações seguintes
 
 - **Questão 8:** escopo do Caminho A concluído e validado localmente conforme a seção acima; pendente apenas decisão posterior sobre merge na `main` e eventual confirmação da CI remota.
 - **Questão 9:** desenho teórico concluído no ADR-006: LLM plugável, tool calling, MCP central, guardrails, cache, custo, latência e observabilidade. A implementação real não faz parte desta etapa.
-- **Questões 10 e 11:** concluir os entregáveis previstos no enunciado, incluindo proposta conceitual em Go, portfólio e reflexão final.
+- **Questão 10:** resposta teórica registrada no ADR-007: postura diante de Go, critérios técnicos, protótipo comparativo, riscos de manutenção e aprendizado em duas semanas; nenhuma implementação Go foi realizada.
+- **Questão 11:** concluir os entregáveis previstos no enunciado, incluindo portfólio e reflexão final.
 
 ### Verificações complementares
 
@@ -338,6 +364,7 @@ A documentação distingue o que foi **implementado**, o que foi **validado loca
 - [ADR-004 — Produtos, Estoque, JWT e inicialização](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md)
 - [ADR-005 — Agente determinístico de consultas ao ERP](docs/adr/ADR-005-agente-deterministico-consultas-erp.md)
 - [ADR-006 — Evolução para LLM, Tool Calling e MCP (Questão 9)](docs/adr/ADR-006-llm-mcp-guardrails-observabilidade.md)
+- [ADR-007 — Avaliação de Go para processamento de eventos (Questão 10)](docs/adr/ADR-007-adocao-go-processamento-eventos.md)
 - [Uso de IA — Registro de apoio e responsabilidades](docs/USO-DE-IA.md)
 
 Utilizei o ChatGPT para estudo, questionamentos, alternativas de arquitetura, redação de documentos, propostas de implementação, testes e revisão. As escolhas e revisões estão registradas nos ADRs, e os resultados de testes somente serão declarados quando efetivamente verificados.
