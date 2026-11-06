@@ -2,7 +2,24 @@
 
 Resolução da prova técnica de Back-end e Inteligência Artificial aplicada a um cenário de ERP. A implementação segue uma proposta modular em FastAPI, com decisões documentadas em Architecture Decision Records (ADRs).
 
-> **Estado atual (05/11/2026):** Questões 1–3 documentadas; Questão 4 implementada; Questão 6 implementada e validada nos fluxos principais com PostgreSQL, Redis, RQ e Postman; Questão 7 validada por reinicialização do ambiente com `docker compose up`. Após consolidação, **17 testes passaram**, conforme execução local informada pelo autor (incluindo 4 testes de regras que percorrem 14 cenários). O workflow GitHub Actions está configurado, sem confirmação independente do resultado remoto. Questões 8–11 ainda pendentes.
+## Estado atual do projeto (05/11/2026)
+
+O projeto utiliza FastAPI modular, PostgreSQL, Redis, autenticação JWT, processamento assíncrono com RQ e Docker Compose.
+
+| Questão | Tema | Situação |
+| --- | --- | --- |
+| 1 | Arquitetura de Pedidos e Estoque | Documentada — ADR-001 |
+| 2 | Organização do FastAPI | Documentada — ADR-002 |
+| 3 | Concorrência em Python | Documentada — ADR-003 |
+| 4 | Consulta concorrente e resiliência | Implementada |
+| 5 | Escopo a conferir no enunciado | Não classificada neste README |
+| 6 | API de Produtos, Estoque e JWT | Implementada e validada nos principais fluxos locais |
+| 7 | Docker Compose e inicialização | Implementada e validada localmente |
+| 8–11 | Etapas posteriores | Pendentes |
+
+**Evidências locais:** depois de consolidar a suíte, **17 testes passaram**, segundo a execução relatada pelo autor; 4 testes de regras percorrem 14 cenários de estoque. O ambiente foi recriado com volumes novos usando apenas `docker compose up`, com migrations e seed automáticos. O workflow GitHub Actions está configurado, mas seu resultado remoto ainda não foi confirmado.
+
+As validações locais e limitações técnicas são descritas abaixo e no [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md).
 
 ## Parte 1 — Arquitetura e organização (Questões 1 e 2)
 
@@ -50,11 +67,55 @@ O endpoint consulta **Clientes, Estoque e Financeiro simulados** com `asyncio.ga
 
 **Parâmetros padrão:** `REQUEST_TIMEOUT=2.0` segundos por tentativa, `MAX_ATTEMPTS=3` tentativas totais e `BACKOFF_BASE=0.5` segundo, gerando esperas de 0,5 s e 1 s antes dos retries.
 
-**Limite da demonstração:** as integrações são mocks; esse endpoint não cria pedidos, reserva estoque nem efetua pagamentos. Os testes cobrem os cenários de sucesso, concorrência, timeout, retries, backoff, falha parcial, indisponibilidade total, falha permanente e erro interno. A suíte deve ser executada e seu resultado confirmado na versão atual.
+**Limite da demonstração:** as integrações são mocks; esse endpoint não cria pedidos, reserva estoque nem efetua pagamentos. Os testes cobrem os cenários de sucesso, concorrência, timeout, retries, backoff, falha parcial, indisponibilidade total, falha permanente e erro interno. A suíte foi executada localmente na versão consolidada, com 17 testes aprovados segundo o relato do autor; a execução remota na CI ainda não foi confirmada.
 
 Código: `app/modules/orders/`, `app/integrations/mock_services.py`, `app/integrations/retry.py` e `tests/test_order_summary.py`. Histórico das decisões: [ADR-003](docs/adr/ADR-003-concorrencia-resiliencia.md).
 
-## Ambiente local — Docker Compose (base da Questão 7)
+## Parte 3 — Produtos, Estoque e JWT (Questão 6)
+
+> **Status:** implementação concluída para o escopo desenvolvido, com validação manual de seus fluxos principais e 17 testes aprovados na execução local informada pelo autor. A CI remota ainda requer verificação.
+
+### Funcionalidades implementadas
+
+- **Produtos:** `POST /products`, `GET /products`, `GET /products/{id}`, `PATCH /products/{id}` e `DELETE /products/{id}` (exclusivo de administrador).
+- **Cadastro:** quantidade inicial de 12 ou mais; nome textual; preço Decimal não negativo.
+- **Estoque:** 0 = sem estoque; 1–5 = últimas unidades; 6–12 = estoque baixo; 13+ = disponível. Atualizações posteriores podem chegar a zero.
+- **Listagem:** `page`, `page_size`, `nome`, `preco_min`, `preco_max`, `estoque_baixo`.
+- **Funcionários:** `POST /auth/login` com formulário `username` (e-mail) e `password` (senha); `GET /employees/me`; `POST /employees` apenas para administrador.
+- **Autorização:** funcionários podem consultar, criar e alterar produtos; somente o administrador pode excluir produtos e cadastrar funcionários.
+- **Redis:** cache-aside em `GET /products/{id}`, com TTL e invalidação após alterações.
+- **RQ:** mudanças para faixas mais críticas enfileiram tarefa; o worker grava `stock_alerts` e emite log estruturado.
+- **Persistência:** SQLAlchemy, PostgreSQL, Alembic; seed idempotente.
+
+**Inicialização:** apenas `docker compose up`; a execução automática de migrations e seed está detalhada na Questão 7.
+
+As credenciais demonstrativas estão documentadas no `.env.example`, **apenas para desenvolvimento local**; altere-as e substitua `JWT_SECRET` antes de expor o sistema. Dois logins demonstrativos:
+
+| Perfil | E-mail | Senha demonstrativa |
+| --- | --- | --- |
+| Administrador | `admin@example.test` | `LocalAdmin123!` |
+| Funcionário | `employee@example.test` | `LocalEmployee123!` |
+
+Exemplo de login:
+
+```bash
+curl -X POST http://localhost:8000/auth/login \
+  -d 'username=admin@example.test&password=LocalAdmin123!'
+```
+
+Os campos de cadastro de funcionários e as credenciais iniciais são demonstrativos, não um sistema completo de gestão de identidade.
+
+### Evidências e limitações
+
+**Evidências locais (05/11/2026):** com Postman, foram verificados login de admin e funcionário (`200`), acesso sem token (`401`), CRUD de produto e exclusão restrita ao administrador (`403` para funcionário, `204` para admin e `404` após exclusão), cadastro abaixo de 12 unidades (`422`), classificação de estoque, filtros por nome/preço/estoque baixo e paginação. O Redis apresentou uma chave preenchida após `GET /products/{id}` e ausência da chave após o PATCH (consistente com invalidação, mas o TTL também poderia explicar ausência tardia). O RQ recebeu e processou alertas reais, persistidos em `stock_alerts`; a alteração dentro da mesma faixa não gerou alerta. A primeira tentativa de alerta falhou porque a tabela `products` não estava registrada no metadata do worker; o import do modelo foi corrigido e as transições posteriores funcionaram. Após a refatoração, o autor informou **17 testes aprovados** no pytest.
+
+**CI:** `.github/workflows/integration.yml` constrói o Compose, executa novamente init/seed e a suíte. Ainda não há resultado remoto confirmado. **Limitação de histórico:** a exclusão física de produto aciona `ON DELETE CASCADE` e remove alertas associados; isso deve ser considerado para evolução/auditoria.
+
+Decisões técnicas: [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md).
+
+## Parte 4 — Infraestrutura e execução (Questão 7)
+
+A inicialização foi projetada para ocorrer com **um único comando**, sem migrations ou seeds manuais. Os serviços aguardam as dependências necessárias, e os volumes preservam dados entre reinicializações. A recriação local com volumes vazios foi validada.
 
 Pré-requisito: Docker Engine ou Docker Desktop com Docker Compose. Na raiz do projeto:
 
@@ -98,62 +159,35 @@ O healthcheck da API confirma a resposta HTTP, sem testar diretamente PostgreSQL
 
 ### Testes
 
-A suíte pode ser executada com Python e as dependências instaladas ou **dentro da infraestrutura Compose** (com o ambiente já iniciado):
+Com o ambiente iniciado via `docker compose up`, execute em outro terminal, na raiz do projeto:
 
 ```bash
-python -m pytest -q
-# Ou, usando o PostgreSQL/Redis já iniciados:
 docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q
 ```
 
+Também é possível executar `python -m pytest -q` diretamente, desde que as dependências, variáveis de ambiente e os serviços de PostgreSQL/Redis estejam configurados e acessíveis.
+
 O Dockerfile não copia `tests/` por padrão; o comando acima monta a pasta somente para testes. **Resultado local informado após a refatoração: 17 testes aprovados.** O arquivo `test_stock_rules.py` contém 4 funções que verificam 14 cenários; a quantidade de testes coletados pelo pytest não é a quantidade de cenários percorridos. A execução não substitui a análise de casos não cobertos.
 
-## Parte 3 — Produtos, Estoque e JWT (Questão 6)
+## Próximas etapas e verificações complementares
 
-> Implementação validada manualmente no ambiente Docker local (PostgreSQL, Redis, RQ, autenticação e CRUD) e pela suíte local informada com 17 testes aprovados. A execução remota no GitHub Actions continua sem confirmação independente.
+### Implementações seguintes
 
-- **Produtos:** `POST /products`, `GET /products`, `GET /products/{id}`, `PATCH /products/{id}` e `DELETE /products/{id}` (exclusivo de administrador).
-- **Cadastro:** quantidade inicial de 12 ou mais; nome textual; preço Decimal não negativo.
-- **Estoque:** 0 = sem estoque; 1–5 = últimas unidades; 6–12 = estoque baixo; 13+ = disponível. Atualizações posteriores podem chegar a zero.
-- **Listagem:** `page`, `page_size`, `nome`, `preco_min`, `preco_max`, `estoque_baixo`.
-- **Funcionários:** `POST /auth/login` com formulário `username` (e-mail) e `password` (senha); `GET /employees/me`; `POST /employees` apenas para administrador.
-- **Autorização:** funcionários podem consultar, criar e alterar produtos; somente o administrador pode excluir produtos e cadastrar funcionários.
-- **Redis:** cache-aside em `GET /products/{id}`, com TTL e invalidação após alterações.
-- **RQ:** mudanças para faixas mais críticas enfileiram tarefa; o worker grava `stock_alerts` e emite log estruturado.
-- **Persistência:** SQLAlchemy, PostgreSQL, Alembic; seed idempotente.
+- **Questão 8:** desenvolver o agente para consultas em linguagem natural sobre os dados do ERP, conforme o enunciado.
+- **Questão 9:** documentar e avaliar integração futura com LLM, ferramentas/tool calls/MCP e controles de segurança.
+- **Questões 10 e 11:** concluir os entregáveis previstos no enunciado, incluindo proposta conceitual em Go, portfólio e reflexão final.
 
-**Inicialização exigida:** apenas `docker compose up`. O serviço `init` aplica `alembic upgrade head` e executa `python -m app.seed` antes de iniciar API e worker. Os volumes são preservados entre reinicializações.
+### Verificações complementares
 
-As credenciais demonstrativas estão documentadas no `.env.example`, **apenas para desenvolvimento local**; altere-as e substitua `JWT_SECRET` antes de expor o sistema. Dois logins demonstrativos:
+As Questões 6 e 7 foram implementadas e validadas nos principais fluxos locais. Ainda cabe:
 
-| Perfil | E-mail | Senha demonstrativa |
-| --- | --- | --- |
-| Administrador | `admin@example.test` | `LocalAdmin123!` |
-| Funcionário | `employee@example.test` | `LocalEmployee123!` |
+- Confirmar o resultado remoto do GitHub Actions.
+- Avaliar, como evolução futura, a preservação dos alertas quando um produto é excluído (`ON DELETE CASCADE`).
+- Conferir o escopo da Questão 5 e manter README e ADRs consistentes com o avanço da prova.
 
-Exemplo de login:
+Essas verificações não anulam os resultados locais já obtidos. O [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md) registra as limitações técnicas conhecidas.
 
-```bash
-curl -X POST http://localhost:8000/auth/login \
-  -d 'username=admin@example.test&password=LocalAdmin123!'
-```
-
-Os campos de cadastro de funcionários e as credenciais iniciais são demonstrativos, não um sistema completo de gestão de identidade.
-
-**Evidências locais (05/11/2026):** com Postman, foram verificados login de admin e funcionário (`200`), acesso sem token (`401`), CRUD de produto e exclusão restrita ao administrador (`403` para funcionário, `204` para admin e `404` após exclusão), cadastro abaixo de 12 unidades (`422`), classificação de estoque, filtros por nome/preço/estoque baixo e paginação. O Redis apresentou uma chave preenchida após `GET /products/{id}` e ausência da chave após o PATCH (consistente com invalidação, mas o TTL também poderia explicar ausência tardia). O RQ recebeu e processou alertas reais, persistidos em `stock_alerts`; a alteração dentro da mesma faixa não gerou alerta. A primeira tentativa de alerta falhou porque a tabela `products` não estava registrada no metadata do worker; o import do modelo foi corrigido e as transições posteriores funcionaram. Após a refatoração, o autor informou **17 testes aprovados** no pytest.
-
-**CI:** `.github/workflows/integration.yml` constrói o Compose, executa novamente init/seed e a suíte. Ainda não há resultado remoto confirmado. **Limitação de histórico:** a exclusão física de produto aciona `ON DELETE CASCADE` e remove alertas associados; isso deve ser considerado para evolução/auditoria.
-
-Decisões técnicas: [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md).
-
-## Próximas etapas
-
-- **Questão 6:** principais fluxos testados no ambiente real; revisar limitações conhecidas e acompanhar a execução remota da CI.
-- **Questão 7:** a inicialização do zero com `docker compose up`, healthchecks, Alembic e seed foi verificada no Linux; acompanhar a execução remota da CI e manter documentação coerente.
-- **Questões 8 e 9:** agente local para consultas em linguagem natural e explicação de uma integração futura com LLM, tool calls/MCP e controles de segurança.
-- **Questões 10 e 11:** proposta conceitual em Go, portfólio e reflexão final.
-
-A documentação distingue o que está **implementado**, o que está **conceitualmente decidido** e o que segue **pendente**.
+A documentação distingue o que foi **implementado**, o que foi **validado localmente**, o que foi apenas **decidido conceitualmente** e o que segue **pendente**.
 
 ## Uso de IA
 
