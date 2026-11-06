@@ -1,6 +1,6 @@
 # ADR-005 — Agente determinístico de consultas ao ERP
 
-**Status:** Aceito; Caminho A implementado e validado nos cenários registrados abaixo. Melhorias de resposta aguardam nova execução local.
+**Status:** Aceito; Caminho A implementado e validado localmente nos cenários registrados abaixo. Questão 8 concluída para o escopo escolhido, sem merge nesta etapa.
 
 **Escopo:** Questão 8, Parte 5 da prova; proposta de evolução para a Questão 9.
 
@@ -92,7 +92,11 @@ O interpretador não busca ou conhece os produtos. Ele reconhece apenas padrões
 - **Implementação inicial publicada (05/11/2026):** módulos `app/modules/agent/`, rota autenticada `POST /agent/query`, `tests/test_agent.py` e documentação.
 - **Teste automatizado inicial informado pelo autor (05/11/2026):** **20 testes aprovados em 0,84 s** com a pasta `tests/` montada no container. O `Dockerfile` não copia os testes; isso explica os erros iniciais de arquivo ausente no container, não uma falha do agente. O teste do módulo usa SQLite em memória e substitui dependências; ele não equivale ao teste manual contra PostgreSQL e JWT reais.
 - **Evidências manuais informadas pelo autor, Swagger/JWT/PostgreSQL:** estoque abaixo de 10 (3 produtos), preço acima de 200 (4), preço abaixo de 100 (0, HTTP 200), abaixo de 150 (1), abaixo de 190 (2). Perguntas de ranking e de campo implícito receberam HTTP 422, conforme o escopo.
-- **Melhoria após os testes:** foram adicionados `situacao` e `mensagem` para os retornos 200 e mensagens de erro 422 mais orientativas, sem alterar a regra de consulta. Novos testes cobrem resposta sem correspondências e pergunta não suportada. **Ainda é necessário reexecutar a suíte após essas alterações**, inclusive a suíte geral, e validar os novos campos no Swagger. Não há resultado de CI remota confirmado para essa versão.
+- **Melhoria e revalidação final informadas pelo autor (05/11/2026):** foram adicionados `situacao` e `mensagem` para respostas 200 e mensagens de erro 422 mais orientativas, sem alterar a regra de consulta. Novos testes foram incluídos para consulta sem correspondências e pergunta não suportada. O autor confirmou que **a suíte executada após essas alterações passou**, mas não compartilhou a saída ou a contagem final; portanto, **não atribuímos uma quantidade exata de testes à última execução**. No Swagger, o autor mostrou HTTP 200 com `situacao: "sem_resultados"`, mensagem `Nenhum produto encontrado para preço abaixo de 100.`, `total: 0` e `produtos: []` usando JWT e PostgreSQL reais. **Não há confirmação de CI remota** para esta versão.
 
 O README agora traz preparação, autenticação no Swagger, exemplos com entradas e saídas, tabela de comportamentos HTTP e comando de testes com volume `tests/` montado, além das limitações e do plano B.
 
+
+### 8.1. Encerramento do escopo
+
+O Caminho A atende à proposta de interpretação determinística, consulta estruturada a dados reais e resposta JSON, com limitações explicitadas. Os testes locais e o cenário de ausência de resultados foram confirmados pelo autor; permanece fora do escopo a evolução para múltiplos filtros, contexto, ranking e LLM plugável. O merge na `main` será uma decisão posterior, separada da validação funcional.
