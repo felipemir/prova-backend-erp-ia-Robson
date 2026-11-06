@@ -314,28 +314,46 @@ Antes de escolher um modelo ou provedor, avaliaria custo por tokens, cotas, volu
 
 ## Parte 6 — Avaliação de Go para processamento de eventos (Questão 10)
 
-> **Status: resposta teórica/documental.** Não foi criado um serviço Go nem houve migração, benchmark ou alteração no processamento existente.
+> **Status: reflexão técnica e plano de aprendizado.** Não implementei um serviço Go nem executei benchmarks ou migração nesta prova.
 
-### Posicionamento e decisão
+### Como eu reagiria e como penso diante de uma tecnologia nova
 
-Eu aceitaria com interesse o desafio de desenvolver em Go, linguagem que tenho vontade de aprender. Entretanto, **não escolheria uma tecnologia apenas por expectativa de desempenho**. Antes de migrar um consumidor de eventos Python, instrumentaria o pipeline para analisar throughput, latências p95/p99, backlog da fila, CPU, memória, tempo em banco e chamadas externas, erros e custo de infraestrutura.
+Eu receberia a oportunidade de trabalhar com **Go com interesse e disposição para aprender**. Ainda não tenho experiência profissional nessa linguagem e seria transparente sobre isso. Ao mesmo tempo, não vejo a falta de familiaridade com a sintaxe como impedimento para começar a contribuir: meu ponto de partida seria entender o **problema de negócio, o contrato dos eventos, as garantias de consistência e o comportamento esperado do serviço**. Com essas responsabilidades claras, consigo aprender a ferramenta enquanto implemento uma parte pequena e verificável da solução.
 
-Go pode ser adequado para processamento concorrente e tarefas exigentes em CPU, mas o comportamento depende da carga real; se o gargalo estiver em I/O, no broker ou no PostgreSQL, uma reescrita pode não resolver. O volume hipotético de 100 mil eventos/minuto, sozinho, não prova que Python seja insuficiente. Eu também avaliaria otimizações da solução Python atual.
+Meu modo de pensar seria separar duas perguntas que podem parecer iguais, mas não são:
 
-### Protótipo antes da migração
+1. **Como eu aprendo Go e começo a entregar com qualidade?** Estudando os fundamentos necessários para o trabalho, lendo código e padrões da equipe, criando testes desde a primeira entrega, pedindo revisão e aumentando a responsabilidade gradualmente.
+2. **Go é a decisão certa para esse componente?** Isso depende do gargalo, da carga e dos objetivos do sistema. Meu entusiasmo em aprender a linguagem não seria, sozinho, justificativa para uma migração.
 
-Minha proposta seria começar com um **consumidor pequeno em Go** para um tipo representativo de evento, comparando Go e Python sob as mesmas entradas, regras e recursos. Mediria throughput, latência, CPU, memória, custo e estabilidade, além de testar idempotência, duplicações, retries, falhas e integridade dos dados. Só consideraria um rollout gradual se os resultados justificassem a complexidade adicional e houvesse plano de rollback.
+Se a empresa já tivesse escolhido Go por motivos técnicos e operacionais consistentes, eu respeitaria a decisão e focaria em dominar a stack para contribuir. Se a escolha ainda estivesse aberta, proporia uma avaliação orientada por evidências, sem transformar a discussão em preferência por linguagem.
 
-Um eventual ganho de desempenho não encerraria a avaliação: a equipe precisaria conseguir **manter e operar** o serviço. Consideraria o risco de concentrar conhecimento em poucas pessoas (*bus factor*), documentação, revisões, pareamento e treinamento. Se discordasse da adoção de Go, apresentaria esses argumentos com métricas e alternativas, sem transformar a discussão em preferência pessoal.
+### Como avaliaria a decisão de engenharia
 
-### Aprendizado e qualidade
+Go oferece recursos interessantes para concorrência, como goroutines, além de boa eficiência potencial em determinados workloads. Mas **100 mil eventos por minuto, isoladamente, não provam que Python é o gargalo**. Antes de defender uma reescrita, buscaria descobrir onde o tempo e os recursos estão sendo consumidos:
 
-- **Semana 1:** fundamentos de Go (`struct`, interfaces, erros, módulos, testes), aprendidos em paralelo à construção de um consumidor simples de eventos fictícios.
-- **Semana 2:** goroutines, channels, contextos de cancelamento, controle de concorrência, tratamento de falhas, segurança, testes de corrida (`go test -race`), benchmarks e revisão de código.
+- **Fila e processamento:** throughput sustentado, backlog, idade das mensagens e latência p95/p99 do recebimento à conclusão.
+- **Aplicação e dependências:** CPU, memória, tempo de banco, rede, APIs externas, taxa de erros e retries.
+- **Confiabilidade e operação:** duplicações, idempotência, integridade dos dados, recuperação após falhas, custo de infraestrutura e capacidade de manutenção pela equipe.
 
-A proposta prioriza aprender construindo, com feedback de quem conhece a linguagem e testes desde o início. A entrega real dependeria de critérios de aceitação, CI, observabilidade, consistência de eventos e capacidade de manutenção da equipe.
+Se a limitação estivesse no PostgreSQL ou em serviços externos, trocar Python por Go poderia acrescentar complexidade sem resolver o problema. Também avaliaria otimizações na solução Python atual, mantendo a comparação justa.
 
-**Documento completo:** [ADR-007 — Avaliação de Go para processamento de eventos](docs/adr/ADR-007-adocao-go-processamento-eventos.md). Os números utilizados nos exemplos de discussão são hipotéticos, não medições efetuadas neste projeto.
+### Como aprenderia Go entregando algo útil
+
+**Primeira semana — fundamentos aplicados a um fluxo pequeno.** Estudaria tipos, `struct`, interfaces, módulos, tratamento explícito de erros, testes e biblioteca padrão. Em paralelo, construiria um consumidor simples com **eventos fictícios**, capaz de validar um payload, aplicar uma regra de domínio e registrar o resultado. Não começaria diretamente pelo serviço crítico de produção.
+
+**Segunda semana — concorrência e confiabilidade.** Evoluiria esse consumidor com goroutines, channels quando apropriados, `context.Context`, cancelamento, limites de concorrência, backpressure, retries e tratamento de duplicações. Executaria `go test`, `go test -race`, testes de falha e benchmarks pequenos, buscando revisão de alguém experiente em Go e seguindo os padrões da equipe.
+
+Minha meta nessas duas semanas não seria me declarar especialista: seria **entregar um protótipo compreensível, testável e revisado**, identificar o que ainda não domino e adquirir confiança para assumir tarefas de maior impacto com acompanhamento.
+
+### Protótipo, discordâncias e decisão
+
+Para avaliar uma migração, compararia um pequeno consumidor Go com a versão Python sob **o mesmo contrato de entrada/saída, as mesmas regras, cargas representativas e recursos equivalentes**. Observaria não só throughput e latência, mas também consumo de CPU/memória, tratamento de falhas, idempotência e custo operacional. Só defenderia uma adoção gradual se os ganhos justificassem uma segunda stack, houvesse observabilidade, documentação, revisão de código e um plano de rollback.
+
+Se eu discordasse da decisão, exporia minhas dúvidas de maneira objetiva, trazendo métricas, alternativas e riscos — principalmente o custo de operação e o risco de poucas pessoas dominarem a nova linguagem. Também estaria aberto a mudar de opinião diante de bons argumentos ou resultados do protótipo.
+
+**Em resumo:** quero aprender Go e contribuir mesmo sem experiência prévia, mas procuraria **aprender resolvendo um problema real, validar minhas entregas e distinguir uma boa oportunidade de desenvolvimento pessoal de uma decisão arquitetural que precisa ser comprovada**.
+
+**Detalhamento:** [ADR-007 — Avaliação de Go para processamento de eventos](docs/adr/ADR-007-adocao-go-processamento-eventos.md). Este é um plano proposto, não um benchmark ou serviço Go já realizado.
 
 ## Parte 7 — Portfólio (Questão 11)
 
