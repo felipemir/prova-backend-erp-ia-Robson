@@ -14,6 +14,8 @@ class AgentFilter(BaseModel):
 class AgentResponse(BaseModel):
     intencao: Literal["consultar_estoque", "consultar_produtos"]
     filtros: list[AgentFilter]
+    situacao: Literal["encontrado", "sem_resultados"]
+    mensagem: str
     total: int
     produtos: list[ProductOut]
     limite: int
