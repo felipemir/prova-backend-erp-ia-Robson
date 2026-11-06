@@ -176,7 +176,7 @@ O Dockerfile não copia `tests/` por padrão; o comando acima monta a pasta some
 
 ### Como iniciar e testar no Swagger
 
-1. Na raiz do projeto, execute `docker compose up -d --build`. Aguarde `api` saudável em `docker compose ps`. O comando preserva os volumes existentes.
+1. Na raiz do projeto, em um primeiro clone, execute `docker compose up` (ele constrói as imagens ausentes). Se você **alterou o código** desde a última construção, execute `docker compose up -d --build` para incluir as mudanças na imagem. Aguarde `api` saudável em `docker compose ps`. Nenhum dos comandos apaga os volumes.
 2. Acesse [Swagger](http://localhost:8000/docs).
 3. Use **POST /auth/login** (formulário) com o usuário demonstrativo `employee@example.test` e senha `LocalEmployee123!` (somente ambiente local). Copie o `access_token` ou use **Authorize** com essas credenciais.
 4. Abra **POST /agent/query**, clique em **Try it out**, cole o JSON abaixo e clique em **Execute**. Observe o código HTTP e o bloco **Server response → Response body**; o bloco **Responses → Example Value** é apenas um exemplo do esquema, não os dados consultados.
@@ -263,7 +263,7 @@ docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -
 
 A pasta é montada somente para leitura; os testes de integração de API do agente usam SQLite em memória e substituem as dependências de banco/autenticação, enquanto os testes manuais acima foram executados com JWT e PostgreSQL reais.
 
-**Evidência informada pelo autor em 05/11/2026:** a versão inicial do agente passou em **20 testes em 0,84 s** com `tests/` montada. Também foram observados pelo Swagger, usando JWT e PostgreSQL reais, os casos estoque `< 10` (3 registros), preço `> 200` (4), preço `< 100` (0), preço `< 150` (1) e preço `< 190` (2), além de perguntas não suportadas recebendo HTTP 422. Esses testes são **anteriores** às mensagens `situacao`/`mensagem` adicionadas depois: a nova suíte e a resposta completa atualizada ainda precisam ser reexecutadas localmente. Não há confirmação de execução remota da CI para esta versão.
+**Evidência informada pelo autor em 05/11/2026:** a versão inicial do agente passou em **20 testes em 0,84 s** com `tests/` montada. Também foram observados pelo Swagger, usando JWT e PostgreSQL reais, os casos estoque `< 10` (3 registros), preço `> 200` (4), preço `< 100` (0), preço `< 150` (1) e preço `< 190` (2), além de perguntas não suportadas recebendo HTTP 422. **Revalidação final informada pelo autor (05/11/2026):** após a inclusão de `situacao`/`mensagem` e novos casos de teste, o autor confirmou que a suíte executada novamente passou, sem enviar a contagem/saída detalhada desta última execução. O Swagger confirmou a resposta nova para preço abaixo de 100 com HTTP 200, `situacao: "sem_resultados"`, mensagem explicativa, `total: 0` e lista vazia, usando JWT e PostgreSQL reais. A validação local do Caminho A está concluída para os cenários documentados. **A CI remota ainda não foi confirmada; o merge da Questão 8 na `main` não foi realizado.**
 
 ### Limites e caminhos futuros
 
@@ -275,7 +275,7 @@ A pasta é montada somente para leitura; os testes de integração de API do age
 
 ### Implementações seguintes
 
-- **Questão 8:** executar novamente os testes e a chamada Swagger após as melhorias de resposta, registrar as evidências e conferir a suíte completa.
+- **Questão 8:** escopo do Caminho A concluído e validado localmente conforme a seção acima; pendente apenas decisão posterior sobre merge na `main` e eventual confirmação da CI remota.
 - **Questão 9:** documentar e avaliar integração futura com LLM, ferramentas/tool calls/MCP e controles de segurança.
 - **Questões 10 e 11:** concluir os entregáveis previstos no enunciado, incluindo proposta conceitual em Go, portfólio e reflexão final.
 
