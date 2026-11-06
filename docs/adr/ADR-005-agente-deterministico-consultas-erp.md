@@ -1,6 +1,6 @@
 # ADR-005 — Agente determinístico de consultas ao ERP
 
-**Status:** Aceito para a primeira versão (Caminho A); implementação e validação registradas separadamente após execução.
+**Status:** Aceito; Caminho A implementado e validado nos cenários registrados abaixo. Melhorias de resposta aguardam nova execução local.
 
 **Escopo:** Questão 8, Parte 5 da prova; proposta de evolução para a Questão 9.
 
@@ -24,10 +24,10 @@ Escolhi um interpretador **determinístico, local, de leitura e com um único fi
 | Vocabulário inicial | abaixo de/menor que/inferior a/menos de; acima de/maior que/superior a/mais de; igual a/exatamente; no mínimo; no máximo |
 | Valores | inteiro não negativo para estoque; decimal não negativo para preço |
 | Entrada | JSON com `pergunta` |
-| Saída | JSON com intenção, filtro interpretado, total e produtos encontrados |
+| Saída | JSON com intenção, filtro interpretado, situação, mensagem, total e produtos encontrados |
 | Autenticação | Bearer JWT existente; sem nova política de autorização |
 | Persistência | Consulta somente leitura à tabela `products` via SQLAlchemy |
-| Limite | Resposta paginada/limitada para não devolver um catálogo ilimitado |
+| Limite | No máximo 50 produtos por resposta, ordenados por ID; total considera todas as correspondências, sem paginação nesta versão |
 
 O agente não executa ações destrutivas e não envia a pergunta para serviços externos. Quando uma pergunta está fora do vocabulário, tem condições múltiplas ou é ambígua, **não tenta adivinhar**: retorna erro explicativo.
 
@@ -35,7 +35,7 @@ O agente não executa ações destrutivas e não envia a pergunta para serviços
 
 - **Router:** recebe o JSON, exige JWT e entrega a resposta.
 - **Interpretador:** transforma uma pergunta reconhecida em um contrato estruturado com intenção, campo, operador e valor; não acessa banco, não gera SQL.
-- **Service:** valida a operação e coordena o acesso a dados; decide o que retornar quando a pergunta não é suportada.
+- **Service:** valida a operação e coordena o acesso a dados; diferencia consulta com registros, consulta válida sem resultados e pergunta não suportada.
 - **Repository:** usa apenas colunas explicitamente permitidas e operadores SQLAlchemy previamente mapeados; nunca executa SQL livre proveniente do texto.
 - **Schemas Pydantic:** contratos de entrada, filtro e saída.
 
@@ -71,6 +71,28 @@ Depois de validar o Caminho A, poderemos estudar:
 - Ter testes automatizados das regras, dos casos inválidos e do fluxo de consulta.
 - Documentar exemplos, limites e resultados efetivamente verificados.
 
-## 7. Registro de validação
+## 7. Contrato de resposta e casos de erro
 
-**Implementação inicial publicada na branch (05/11/2026):** foram adicionados os módulos `app/modules/agent/` (schemas, interpreter, service, repository e router), o endpoint autenticado `POST /agent/query`, casos de teste em `tests/test_agent.py` e documentação no README. A implementação usa SQLAlchemy somente de leitura e rejeita condições múltiplas ou não reconhecidas. **A nova suíte de testes e o endpoint ainda não foram executados/validados no ambiente Docker do autor após esses commits.** Quando houver resultados, serão registrados sem sobrescrever as decisões iniciais.
+A decisão foi preservar a semântica HTTP em vez de transformar uma busca sem registros em erro:
+
+| Caso | HTTP | Resultado |
+| --- | --- | --- |
+| Pergunta entendida, produtos encontrados | 200 | `situacao: "encontrado"`, `mensagem` e itens |
+| Pergunta entendida, nenhum produto corresponde | 200 | `situacao: "sem_resultados"`, `mensagem` explicativa, `total: 0` e `produtos: []` |
+| Pergunta não reconhecida / múltiplas condições | 422 | `detail` explica o limite e sugere exemplos válidos |
+| Token ausente, inválido ou expirado | 401 | Autenticação existente no FastAPI |
+| Corpo JSON inválido | 422 | Detalhes de validação Pydantic |
+
+Exemplo conceitual: para `Preço abaixo de 100`, a seed inicial não contém produtos correspondentes. Retornar 200 com uma explicação e lista vazia permite distinguir **ausência de dados correspondentes** de **falha de interpretação**, que recebe 422.
+
+O interpretador não busca ou conhece os produtos. Ele reconhece apenas padrões suportados; o Repository consulta o PostgreSQL. Perguntas como `Qual produto é o mais caro?` e `Qual produto abaixo de 100 reais?` ainda são incompatíveis com o Caminho A. Não afirmamos que elas são compreendidas apenas porque fazem sentido para um humano.
+
+## 8. Registro de validação e revisão
+
+- **Implementação inicial publicada (05/11/2026):** módulos `app/modules/agent/`, rota autenticada `POST /agent/query`, `tests/test_agent.py` e documentação.
+- **Teste automatizado inicial informado pelo autor (05/11/2026):** **20 testes aprovados em 0,84 s** com a pasta `tests/` montada no container. O `Dockerfile` não copia os testes; isso explica os erros iniciais de arquivo ausente no container, não uma falha do agente. O teste do módulo usa SQLite em memória e substitui dependências; ele não equivale ao teste manual contra PostgreSQL e JWT reais.
+- **Evidências manuais informadas pelo autor, Swagger/JWT/PostgreSQL:** estoque abaixo de 10 (3 produtos), preço acima de 200 (4), preço abaixo de 100 (0, HTTP 200), abaixo de 150 (1), abaixo de 190 (2). Perguntas de ranking e de campo implícito receberam HTTP 422, conforme o escopo.
+- **Melhoria após os testes:** foram adicionados `situacao` e `mensagem` para os retornos 200 e mensagens de erro 422 mais orientativas, sem alterar a regra de consulta. Novos testes cobrem resposta sem correspondências e pergunta não suportada. **Ainda é necessário reexecutar a suíte após essas alterações**, inclusive a suíte geral, e validar os novos campos no Swagger. Não há resultado de CI remota confirmado para essa versão.
+
+O README agora traz preparação, autenticação no Swagger, exemplos com entradas e saídas, tabela de comportamentos HTTP e comando de testes com volume `tests/` montado, além das limitações e do plano B.
+
