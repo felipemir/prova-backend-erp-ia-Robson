@@ -172,45 +172,110 @@ O Dockerfile não copia `tests/` por padrão; o comando acima monta a pasta some
 
 ## Parte 5 — Agente determinístico de consultas (Questão 8)
 
-**Implementação inicial — Caminho A:** um interpretador local recebe perguntas em português, identifica **um campo + operador + valor**, e devolve um JSON com os critérios interpretados e os produtos consultados no banco. Não utiliza OpenAI, Anthropic, serviço externo nem LLM.
+**Escopo da versão A:** interpretador local determinístico, sem chamadas a APIs de LLM, que reconhece **uma única condição afirmativa** de estoque ou preço. Uma pergunta em português é convertida em intenção + filtro estruturado; o Service coordena e o Repository consulta os dados reais de `products` no PostgreSQL usando expressões SQLAlchemy, sem executar SQL fornecido pelo usuário.
 
-```http
-POST /agent/query
-Authorization: Bearer <token>
-Content-Type: application/json
-```
+### Como iniciar e testar no Swagger
 
-Exemplo de corpo:
+1. Na raiz do projeto, execute `docker compose up -d --build`. Aguarde `api` saudável em `docker compose ps`. O comando preserva os volumes existentes.
+2. Acesse [Swagger](http://localhost:8000/docs).
+3. Use **POST /auth/login** (formulário) com o usuário demonstrativo `employee@example.test` e senha `LocalEmployee123!` (somente ambiente local). Copie o `access_token` ou use **Authorize** com essas credenciais.
+4. Abra **POST /agent/query**, clique em **Try it out**, cole o JSON abaixo e clique em **Execute**. Observe o código HTTP e o bloco **Server response → Response body**; o bloco **Responses → Example Value** é apenas um exemplo do esquema, não os dados consultados.
 
 ```json
-{"pergunta": "Estoque abaixo de 5"}
+{"pergunta": "Quais produtos estão com estoque abaixo de 10 unidades?"}
 ```
 
-A resposta contém `intencao`, `filtros` (com `campo`, `operador`, `valor`), `total`, `produtos` e `limite`. A lista de produtos é limitada aos primeiros **50 registros**, ordenados por ID; `total` indica quantos registros satisfazem a condição no banco.
+A resposta contém `intencao`, `filtros`, `situacao`, `mensagem`, `total`, `produtos` e `limite`. O filtro informa `campo` (`preco` ou `quantidade_em_estoque`), `operador` e `valor`. Produtos são ordenados por ID, com **limite máximo de 50 por consulta**; `total` considera todos os registros correspondentes, não apenas os 50 retornados. Não há paginação por cursor nesta versão.
 
-**Expressões reconhecidas (campo explícito antes do operador):**
+### Exemplos para experimentar
 
-| Exemplos | Operador |
-| --- | --- |
-| `estoque abaixo de 5`, `preço menor que 100`, `inferior a`, `menos de` | `<` |
-| `preço acima de 200`, `maior que`, `superior a`, `mais de` | `>` |
-| `estoque igual a 0`, `preço exatamente 80` | `=` |
-| `estoque no mínimo 15` | `>=` |
-| `preço no máximo 100` | `<=` |
+| JSON: valor da chave `pergunta` | Interpretação | Resultado na seed inicial |
+| --- | --- | --- |
+| `Quais produtos estão com estoque abaixo de 10 unidades?` | Estoque `< 10` | 3 (Mouse, Headset, Webcam) |
+| `Quero produtos com preço acima de 200 reais` | Preço `> 200` | 4 (Notebook, Monitor, Teclado, Headset) |
+| `Quais produtos têm preço abaixo de 100 reais?` | Preço `< 100` | 0; consulta válida |
+| `Quais produtos têm preço abaixo de 150 reais?` | Preço `< 150` | 1 (Mouse) |
+| `Quais produtos têm preço abaixo de 190 reais?` | Preço `< 190` | 2 (Mouse, Webcam) |
+| `Estoque no máximo 5` | Estoque `<= 5` | 2 (Headset, Webcam) |
+| `Estoque no mínimo 13` | Estoque `>= 13` | 2 (Notebook, Monitor) |
+| `Preço igual a 149,90` | Preço `= 149.90` | 1 (Mouse) |
+| `Qual produto é o mais caro?` | Ranking não suportado | HTTP 422 |
+| `Estoque abaixo de 5 e preço acima de 100` | Duas condições não suportadas | HTTP 422 |
+| `Qual produto abaixo de 100 reais?` | Campo implícito, não suportado | HTTP 422 |
 
-O campo de estoque aceita inteiros não negativos; preços aceitam valores não negativos com até duas casas decimais, usando ponto ou vírgula. A interpretação normaliza maiúsculas e acentos. O usuário deve informar **estoque/quantidade em estoque ou preço/valor** antes da comparação.
+**Observação:** os resultados numéricos da tabela pressupõem a seed inicial intacta; se produtos forem criados/alterados, a resposta acompanha os dados reais do banco.
 
-**Limitações intencionais:** apenas uma condição afirmativa por pergunta. A primeira versão não interpreta filtros com `E`/`OU`, nomes de produtos, histórico ou contexto de conversa, números por extenso, expressões complexas e operações de escrita. Perguntas não reconhecidas retornam HTTP `422` com explicação, sem tentar consultar parcialmente. O Service valida a interpretação; o Repository usa colunas e operadores permitidos no SQLAlchemy, sem SQL gerado da frase.
+As expressões reconhecidas são: **abaixo de, menor que, inferior a, menos de** (`<`); **acima de, maior que, superior a, mais de** (`>`); **igual a, exatamente** (`=`); **no mínimo** (`>=`); **no máximo** (`<=`). É necessário informar o campo (`estoque` / `quantidade em estoque` ou `preço` / `valor`) imediatamente antes da expressão. Acentos e maiúsculas são normalizados. Estoque aceita inteiros não negativos, preço aceita decimal com uma ou duas casas, usando vírgula ou ponto, sem separador de milhar.
 
-O módulo foi adicionado à branch e inclui testes em `tests/test_agent.py`. **O resultado da execução da nova suíte ainda precisa ser confirmado no Docker local**; os 17 testes anteriormente aprovados são anteriores à adição do agente.
+### Significado das respostas HTTP
 
-As decisões do Caminho A e a evolução futura (Caminho B, com filtros compostos, desambiguação e contexto) estão registradas no [ADR-005](docs/adr/ADR-005-agente-deterministico-consultas-erp.md).
+**200, produtos encontrados:**
+
+```json
+{
+  "intencao": "consultar_produtos",
+  "filtros": [{"campo": "preco", "operador": "<", "valor": "150"}],
+  "situacao": "encontrado",
+  "mensagem": "1 produto(s) encontrado(s) para preço abaixo de 150.",
+  "total": 1,
+  "produtos": [
+    {
+      "id": 4,
+      "nome": "Mouse sem fio",
+      "preco": "149.90",
+      "quantidade_em_estoque": 8,
+      "data_criacao": "<data ISO 8601>",
+      "data_atualizacao": "<data ISO 8601>",
+      "situacao_estoque": "estoque_baixo",
+      "alerta": "Estoque baixo"
+    }
+  ],
+  "limite": 50
+}
+```
+
+**200, pergunta compreendida mas sem correspondências:** não é uma falha; o banco respondeu corretamente à consulta.
+
+```json
+{
+  "intencao": "consultar_produtos",
+  "filtros": [{"campo": "preco", "operador": "<", "valor": "100"}],
+  "situacao": "sem_resultados",
+  "mensagem": "Nenhum produto encontrado para preço abaixo de 100.",
+  "total": 0,
+  "produtos": [],
+  "limite": 50
+}
+```
+
+**422, pergunta não suportada:** o interpretador não inventa uma intenção nem faz consulta parcial. Exemplo: `Qual produto é o mais caro?` gera erro explicativo com sugestões de formato, como `Estoque abaixo de 10` ou `Preço acima de 200`. Perguntas com `E`/`OU` ou negação também são rejeitadas. **401** indica token ausente ou inválido. O **422** também pode ocorrer por payload JSON inválido, como `pergunta` vazia, caso em que a validação do FastAPI/Pydantic fornece os detalhes.
+
+### Executar testes automatizados
+
+O `Dockerfile` **não copia a pasta `tests/` para a imagem da API**. Por isso, `docker compose exec api pytest tests/test_agent.py` sem volume montado produz `file or directory not found`. A maneira reproduzível de testar sem modificar a imagem é:
+
+```bash
+docker compose up -d --build
+docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q -p no:cacheprovider tests/test_agent.py
+# Para executar toda a suíte:
+docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q -p no:cacheprovider
+```
+
+A pasta é montada somente para leitura; os testes de integração de API do agente usam SQLite em memória e substituem as dependências de banco/autenticação, enquanto os testes manuais acima foram executados com JWT e PostgreSQL reais.
+
+**Evidência informada pelo autor em 05/11/2026:** a versão inicial do agente passou em **20 testes em 0,84 s** com `tests/` montada. Também foram observados pelo Swagger, usando JWT e PostgreSQL reais, os casos estoque `< 10` (3 registros), preço `> 200` (4), preço `< 100` (0), preço `< 150` (1) e preço `< 190` (2), além de perguntas não suportadas recebendo HTTP 422. Esses testes são **anteriores** às mensagens `situacao`/`mensagem` adicionadas depois: a nova suíte e a resposta completa atualizada ainda precisam ser reexecutadas localmente. Não há confirmação de execução remota da CI para esta versão.
+
+### Limites e caminhos futuros
+
+**Caminho A:** somente uma condição por pergunta, sem contexto, nomes específicos de produtos, ranking `mais caro`, preço implícito por `reais`, números por extenso, SQL livre ou operações de escrita. O interpretador rejeita o que não entende.
+
+**Caminho B (proposta, não implementada):** condições compostas `AND`/`OR`, identificação/desambiguação de produtos, contexto e referências como `o segundo`, adaptador de LLM produzindo o mesmo contrato validado, observabilidade, paginação e métricas. As decisões estão no [ADR-005](docs/adr/ADR-005-agente-deterministico-consultas-erp.md).
 
 ## Próximas etapas e verificações complementares
 
 ### Implementações seguintes
 
-- **Questão 8:** executar a nova suíte e validar o endpoint `POST /agent/query` no Docker local; ajustar eventuais falhas.
+- **Questão 8:** executar novamente os testes e a chamada Swagger após as melhorias de resposta, registrar as evidências e conferir a suíte completa.
 - **Questão 9:** documentar e avaliar integração futura com LLM, ferramentas/tool calls/MCP e controles de segurança.
 - **Questões 10 e 11:** concluir os entregáveis previstos no enunciado, incluindo proposta conceitual em Go, portfólio e reflexão final.
 
