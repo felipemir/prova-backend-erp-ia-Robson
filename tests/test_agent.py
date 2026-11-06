@@ -87,6 +87,8 @@ def test_consulta_estoque_realmente_filtra(client_bd):
     assert data["intencao"] == "consultar_estoque"
     assert data["filtros"] == [{"campo": "quantidade_em_estoque", "operador": "<", "valor": 5}]
     assert data["total"] == 2
+    assert data["situacao"] == "encontrado"
+    assert "2 produto(s)" in data["mensagem"]
     assert [p["nome"] for p in data["produtos"]] == ["Headset USB", "Webcam"]
 
 
@@ -94,6 +96,7 @@ def test_consulta_preco_decimal(client_bd):
     response = client_bd.post("/agent/query", json={"pergunta": "Preço acima de 149,90"})
     assert response.status_code == 200
     assert response.json()["total"] == 1
+    assert response.json()["situacao"] == "encontrado"
     assert response.json()["produtos"][0]["nome"] == "Headset USB"
 
 
@@ -105,3 +108,22 @@ def test_ambiguidade_retorna_422(client_bd):
 def test_json_pergunta_vazia_retorna_422(client_bd):
     response = client_bd.post("/agent/query", json={"pergunta": ""})
     assert response.status_code == 422
+
+
+def test_consulta_valida_sem_resultados_retorna_200_e_mensagem(client_bd):
+    response = client_bd.post("/agent/query", json={"pergunta": "Preço abaixo de 50"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["intencao"] == "consultar_produtos"
+    assert data["filtros"] == [{"campo": "preco", "operador": "<", "valor": "50"}]
+    assert data["situacao"] == "sem_resultados"
+    assert data["total"] == 0
+    assert data["produtos"] == []
+    assert "Nenhum produto encontrado" in data["mensagem"]
+
+
+def test_pergunta_nao_suportada_retorna_exemplo_util(client_bd):
+    response = client_bd.post("/agent/query", json={"pergunta": "Qual produto é o mais caro?"})
+    assert response.status_code == 422
+    assert "Exemplos:" in response.json()["detail"]
+    assert "Preço acima de 200" in response.json()["detail"]
