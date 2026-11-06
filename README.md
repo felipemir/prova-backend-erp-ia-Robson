@@ -9,11 +9,12 @@ O avaliador precisa apenas de **Git, Docker Engine/Desktop e Docker Compose**. N
 ```bash
 git clone https://github.com/felipemir/prova-backend-erp-ia-Robson.git
 cd prova-backend-erp-ia-Robson
-docker compose up -d --build
-docker compose ps
+docker compose up
 ```
 
-O primeiro comando baixa o projeto; o `docker compose up -d --build` constrói e sobe a API, o banco, o Redis e o worker, executando **migrations Alembic e seed de dados automaticamente** no serviço `init`. Aguarde a API ficar `healthy`. Os serviços `init` e `ready` são de execução única e devem encerrar com código `0`; isso é normal. Se preferir acompanhar a inicialização em primeiro plano, use `docker compose up --build` (sem `-d`).
+O primeiro comando baixa o projeto; **`docker compose up` é o único comando necessário para iniciar o ambiente**. Em um clone limpo, o Compose constrói as imagens ainda não existentes, inicia API, PostgreSQL, Redis e worker, e executa **migrations Alembic e seed automaticamente** no serviço `init`. Aguarde a API ficar `healthy` e o serviço `ready` imprimir a mensagem de prontidão. Os serviços `init` e `ready` são de execução única e devem encerrar com código `0`; isso é normal. O terminal continuará exibindo logs enquanto o ambiente estiver ativo.
+
+**Se ocorrer erro de construção ou se o código/dependências tiverem mudado desde a última imagem**, tente `docker compose up --build` para forçar a reconstrução. Esse é um **comando alternativo de recuperação**, não um pré-requisito para a primeira inicialização. Caso o erro persista, consulte os logs; `--build` não corrige problemas de configuração, portas ocupadas ou serviços externos indisponíveis.
 
 ### Verificar se a aplicação está pronta
 
@@ -33,7 +34,7 @@ Em outro terminal, **na raiz do repositório e com os serviços do Compose ativo
 docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q -p no:cacheprovider
 ```
 
-A pasta `tests/` é montada porque não é copiada para a imagem Docker. A suíte inclui testes de integração com PostgreSQL, Redis e worker RQ; uma [execução completa foi aprovada na CI](https://github.com/felipemir/prova-backend-erp-ia-Robson/actions/runs/42208730325). A saída da execução local dependerá do ambiente do avaliador.
+A pasta `tests/` é montada porque não é copiada para a imagem Docker. A suíte inclui testes de integração com PostgreSQL, Redis e worker RQ; a [CI validou o comando exato `docker compose up` em ambiente limpo e aprovou 39 testes](https://github.com/felipemir/prova-backend-erp-ia-Robson/actions/runs/42212448402). A saída da execução local dependerá do ambiente do avaliador.
 
 **Diagnóstico:** `docker compose logs --tail=100 api worker init` mostra os logs; `docker compose ps` mostra o estado dos serviços. Para encerrar, use `docker compose down`, que preserva os volumes. **Não use `docker compose down -v` se quiser manter os dados**, pois `-v` remove os volumes do banco e Redis.
 
@@ -163,7 +164,7 @@ Pré-requisito: Docker Engine ou Docker Desktop com Docker Compose. Na raiz do p
 docker compose up
 ```
 
-Para reconstruir a imagem após mudanças em dependências ou código:
+Se ocorrer um erro de construção ou houver alterações no código ou nas dependências depois de construir as imagens, é possível forçar uma nova construção (alternativa, **não obrigatória** para a primeira execução):
 
 ```bash
 docker compose up --build
@@ -215,7 +216,7 @@ O Dockerfile não copia `tests/` por padrão; o comando acima monta a pasta some
 
 ### Como iniciar e testar no Swagger
 
-1. Na raiz do projeto, em um primeiro clone, execute `docker compose up` (ele constrói as imagens ausentes). Se você **alterou o código** desde a última construção, execute `docker compose up -d --build` para incluir as mudanças na imagem. Aguarde `api` saudável em `docker compose ps`. Nenhum dos comandos apaga os volumes.
+1. Na raiz do projeto, em um primeiro clone, execute **`docker compose up`** (ele constrói imagens ausentes). Aguarde a mensagem de prontidão e a API saudável. Se ocorrer erro de construção ou se o código tiver mudado após a construção anterior, use **`docker compose up --build`** como alternativa. Para diagnóstico, execute `docker compose ps` em outro terminal. Esses comandos não apagam os volumes.
 2. Acesse [Swagger](http://localhost:8000/docs).
 3. Use **POST /auth/login** (formulário) com o usuário demonstrativo `employee@example.test` e senha `LocalEmployee123!` (somente ambiente local). Copie o `access_token` ou use **Authorize** com essas credenciais.
 4. Abra **POST /agent/query**, clique em **Try it out**, cole o JSON abaixo e clique em **Execute**. Observe o código HTTP e o bloco **Server response → Response body**; o bloco **Responses → Example Value** é apenas um exemplo do esquema, não os dados consultados.
@@ -294,7 +295,8 @@ As expressões reconhecidas são: **abaixo de, menor que, inferior a, menos de**
 O `Dockerfile` **não copia a pasta `tests/` para a imagem da API**. Por isso, `docker compose exec api pytest tests/test_agent.py` sem volume montado produz `file or directory not found`. A maneira reproduzível de testar sem modificar a imagem é:
 
 ```bash
-docker compose up -d --build
+docker compose up
+# Em outro terminal, com os serviços ativos:
 docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q -p no:cacheprovider tests/test_agent.py
 # Para executar toda a suíte:
 docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q -p no:cacheprovider
@@ -438,11 +440,10 @@ Este roteiro cobre **somente os fluxos com código executável**. As Questões 1
 Requisitos: Docker com Compose instalado e portas locais 8000 e 5433 disponíveis. Na raiz do repositório:
 
 ```bash
-# Opcional: personalizar segredos e credenciais de demonstração
-cp .env.example .env
-# Ajuste .env antes de compartilhar ou implantar o ambiente.
-docker compose up -d --build
-docker compose ps
+# Opcional: personalizar credenciais ANTES da primeira inicialização:
+# cp .env.example .env
+# Edite .env conforme o ambiente, se necessário.
+docker compose up
 ```
 
 Aguarde PostgreSQL e Redis ficarem `healthy`, `init` terminar com código 0, `api` ficar `healthy` e `worker` ficar iniciado. `ready` também termina com código 0 após imprimir a mensagem de prontidão — **isso é comportamento esperado**, não uma falha.
@@ -578,7 +579,7 @@ Na seed inicial intacta, normalmente há 4 registros. Para consulta válida **se
 
 ### 6. Testes automatizados e verificação do Docker — Questões 4, 6, 7 e 8
 
-Após `docker compose up -d --build`, execute:
+Após iniciar o ambiente com `docker compose up`, mantenha-o ativo e, **em outro terminal na raiz do repositório**, execute:
 
 ```bash
 # Toda a suíte, incluindo a integração com banco/Redis/worker:
