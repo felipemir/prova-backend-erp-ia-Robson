@@ -2,6 +2,43 @@
 
 Resolução da prova técnica de Back-end e Inteligência Artificial aplicada a um cenário de ERP. A implementação segue uma proposta modular em FastAPI, com decisões documentadas em Architecture Decision Records (ADRs).
 
+## Comece aqui — execução e testes em poucos minutos
+
+O avaliador precisa apenas de **Git, Docker Engine/Desktop e Docker Compose**. Não é necessário instalar Python, PostgreSQL ou Redis no computador. Os serviços são iniciados por containers; as portas locais padrão são **8000** (API) e **5433** (PostgreSQL).
+
+```bash
+git clone https://github.com/felipemir/prova-backend-erp-ia-Robson.git
+cd prova-backend-erp-ia-Robson
+docker compose up -d --build
+docker compose ps
+```
+
+O primeiro comando baixa o projeto; o `docker compose up -d --build` constrói e sobe a API, o banco, o Redis e o worker, executando **migrations Alembic e seed de dados automaticamente** no serviço `init`. Aguarde a API ficar `healthy`. Os serviços `init` e `ready` são de execução única e devem encerrar com código `0`; isso é normal. Se preferir acompanhar a inicialização em primeiro plano, use `docker compose up --build` (sem `-d`).
+
+### Verificar se a aplicação está pronta
+
+1. Abra **[Swagger UI — http://localhost:8000/docs](http://localhost:8000/docs)**.
+2. Acesse **[http://localhost:8000/health](http://localhost:8000/health)**: a API deve retornar `{"status":"ok"}`.
+3. Para consultar as integrações simuladas sem autenticação, execute **GET `/orders/12345/summary`** pelo Swagger: o cenário padrão retorna `200` e `status: "complete"`.
+4. Para os demais endpoints, use **POST `/auth/login`** com formulário `username=employee@example.test` e `password=LocalEmployee123!`. No Swagger, clique em **Authorize** para autenticar os endpoints protegidos. No Postman, use **Body → x-www-form-urlencoded** no login e **Authorization → Bearer Token** nas demais chamadas. Credenciais apenas de demonstração local.
+5. Teste **POST `/products`**, **GET `/products`**, **PATCH `/products/{id}`**, **GET `/stock/alerts`** e **POST `/agent/query`**. Os JSONs, permissões, resultados esperados e casos negativos estão no [guia completo Swagger/Postman](#guia-de-validação-da-api--swagger-e-postman-questões-4-6-e-8).
+
+**Atenção ao teste de estoque:** o cadastro inicial exige pelo menos 12 unidades. Para verificar o alerta do worker, crie um produto com `20` unidades e altere para `5`. Aguarde alguns segundos e consulte `GET /stock/alerts` com JWT; a atualização e o processamento da fila são assíncronos.
+
+### Executar a suíte automatizada
+
+Em outro terminal, **na raiz do repositório e com os serviços do Compose ativos**:
+
+```bash
+docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q -p no:cacheprovider
+```
+
+A pasta `tests/` é montada porque não é copiada para a imagem Docker. A suíte inclui testes de integração com PostgreSQL, Redis e worker RQ; uma [execução completa foi aprovada na CI](https://github.com/felipemir/prova-backend-erp-ia-Robson/actions/runs/42208730325). A saída da execução local dependerá do ambiente do avaliador.
+
+**Diagnóstico:** `docker compose logs --tail=100 api worker init` mostra os logs; `docker compose ps` mostra o estado dos serviços. Para encerrar, use `docker compose down`, que preserva os volumes. **Não use `docker compose down -v` se quiser manter os dados**, pois `-v` remove os volumes do banco e Redis.
+
+O fluxo detalhado por questão (incluindo códigos HTTP, JSONs para copiar, cache, autenticação de administrador e testes de falha da Questão 4) permanece disponível na [seção de validação completa](#guia-de-validação-da-api--swagger-e-postman-questões-4-6-e-8).
+
 ## Estado atual do projeto (06/11/2026)
 
 O projeto utiliza FastAPI modular, PostgreSQL, Redis, autenticação JWT, processamento assíncrono com RQ e Docker Compose.
