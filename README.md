@@ -335,14 +335,51 @@ A proposta prioriza aprender construindo, com feedback de quem conhece a linguag
 
 **Documento completo:** [ADR-007 — Avaliação de Go para processamento de eventos](docs/adr/ADR-007-adocao-go-processamento-eventos.md). Os números utilizados nos exemplos de discussão são hipotéticos, não medições efetuadas neste projeto.
 
+## Parte 7 — Portfólio (Questão 11)
+
+**GitHub:** [felipemir](https://github.com/felipemir).
+
+**Projeto escolhido:** [NERVA Build — Backend](https://github.com/felipemir/NERVA-Build-vers-o-para-portf-lio) — [registro detalhado de portfólio](https://github.com/felipemir/NERVA-Build-vers-o-para-portf-lio/blob/main/PORTFOLIO.md).
+
+### Problema que o projeto buscava resolver
+
+O NERVA Build nasceu como MVP de uma plataforma para o segmento de materiais de construção, após investigação do mercado e validação inicial de interesse em Manaus. O objetivo do backend era sustentar um catálogo por loja, usuários e clientes, pedidos e regras de estoque, permitindo organizar operações comerciais de diferentes estabelecimentos.
+
+A visão futura do produto incluía estimar materiais para reformas com assistência de IA e, possivelmente, utilizar câmera do celular para compreender medidas de ambientes. **Essas ideias não foram implementadas neste backend** e não devem ser confundidas com funcionalidades disponíveis no código publicado.
+
+O projeto foi desenvolvido com participação de uma colega e do sócio da iniciativa, com decisões de produto tomadas em conjunto. Minha contribuição concentrou-se principalmente na escrita do backend, no levantamento e entendimento das regras de negócio e na transformação delas em fluxos e validações da aplicação.
+
+### Principais decisões técnicas e por quê
+
+- **Java 21 e Spring Boot:** escolhemos uma base consolidada para desenvolver APIs, organizar serviços e aplicar regras transacionais.
+- **Controllers, Services, Repositories e DTOs:** separamos entrada HTTP, regras de negócio e persistência para facilitar evolução, testes e manutenção.
+- **PostgreSQL, JPA e Flyway:** persistência relacional para lojas, produtos e pedidos; migrations versionadas para evolução do esquema.
+- **Spring Security e JWT:** autenticação e separação de responsabilidades; o escopo da loja deve ser associado ao usuário autenticado, reduzindo o risco de acesso indevido entre estabelecimentos.
+- **Modelagem por loja (`store_id`):** abordagem multi-tenant em banco compartilhado, adequada ao escopo inicial do MVP; exigiria testes adicionais de isolamento para operação crítica.
+- **Pedidos com snapshots de itens e transições de status:** preservar informações da compra mesmo após alterações no catálogo e controlar o momento de baixa/restauração de estoque.
+- **Transações e bloqueios em operações de estoque:** buscar consistência quando pedidos competem pelo mesmo saldo, embora a garantia de segurança sob concorrência deva ser confirmada com testes específicos.
+
+### O que eu faria diferente hoje
+
+1. **Segurança desde o início:** remover contas e senhas de demonstração das migrations, exigir segredos configurados em ambiente, revisar permissões e fortalecer testes de isolamento entre lojas.
+2. **Qualidade e consistência:** ampliar testes automatizados de concorrência, cancelamento, estoque insuficiente, idempotência e demais transições críticas de pedidos.
+3. **Operação e entrega:** implementar CI, observabilidade, healthchecks e empacotamento da API, com ambientes reproduzíveis e documentação mais objetiva de execução.
+4. **Foco e sustentabilidade do MVP:** priorizar os fluxos comerciais comprovados antes de avançar para recursos de IA e visão computacional; definir responsabilidades de manutenção, documentação e continuidade do projeto para reduzir dependência da disponibilidade de pessoas específicas.
+
+### Situação do projeto e limites da demonstração
+
+O desenvolvimento original do NERVA Build foi **pausado por mudanças de localização, disponibilidade e prioridades da equipe**, não por ausência de interesse na validação inicial. Soube posteriormente que parte da base poderá ser reaproveitada em outro projeto para um cliente, mas não participo dessa implementação e não afirmo nenhum resultado dela como entrega minha.
+
+O repositório de portfólio publica um **MVP histórico e não pronto para produção**, com limitações explicitadas em `PORTFOLIO.md`. A preparação para exposição pública envolveu revisão com apoio de IA e remoção do histórico Git original e do segredo JWT padrão. Não executei os testes Maven nem fiz deploy nessa preparação; portanto, não apresento os fluxos como validados em ambiente operacional.
+
 ## Próximas etapas e verificações complementares
 
 ### Implementações seguintes
 
-- **Questão 8:** escopo do Caminho A concluído e validado localmente conforme a seção acima; pendente apenas decisão posterior sobre merge na `main` e eventual confirmação da CI remota.
+- **Questão 8:** escopo do Caminho A concluído e validado localmente conforme a seção acima; alterações incorporadas à `main` pelo PR #2. Ainda cabe confirmar a CI remota.
 - **Questão 9:** desenho teórico concluído no ADR-006: LLM plugável, tool calling, MCP central, guardrails, cache, custo, latência e observabilidade. A implementação real não faz parte desta etapa.
 - **Questão 10:** resposta teórica registrada no ADR-007: postura diante de Go, critérios técnicos, protótipo comparativo, riscos de manutenção e aprendizado em duas semanas; nenhuma implementação Go foi realizada.
-- **Questão 11:** concluir os entregáveis previstos no enunciado, incluindo portfólio e reflexão final.
+- **Questão 11:** portfólio publicado e reflexão concluída nesta seção, com link ao NERVA Build e delimitação de contribuição, decisões e melhorias.
 
 ### Verificações complementares
 
