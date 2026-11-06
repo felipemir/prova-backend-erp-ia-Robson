@@ -2,7 +2,7 @@
 
 Resolução da prova técnica de Back-end e Inteligência Artificial aplicada a um cenário de ERP. A implementação segue uma proposta modular em FastAPI, com decisões documentadas em Architecture Decision Records (ADRs).
 
-## Estado atual do projeto (05/11/2026)
+## Estado atual do projeto (06/11/2026)
 
 O projeto utiliza FastAPI modular, PostgreSQL, Redis, autenticação JWT, processamento assíncrono com RQ e Docker Compose.
 
@@ -12,13 +12,15 @@ O projeto utiliza FastAPI modular, PostgreSQL, Redis, autenticação JWT, proces
 | 2 | Organização do FastAPI | Documentada — ADR-002 |
 | 3 | Concorrência em Python | Documentada — ADR-003 |
 | 4 | Consulta concorrente e resiliência | Implementada |
-| 5 | Escopo a conferir no enunciado | Não classificada neste README |
+| 5 | Não consta no PDF fornecido | Sem questão correspondente |
 | 6 | API de Produtos, Estoque e JWT | Implementada e validada nos principais fluxos locais |
 | 7 | Docker Compose e inicialização | Implementada e validada localmente |
-| 8 | Agente determinístico para consultas ao ERP | Implementação inicial publicada; testes novos aguardam execução local |
-| 9–11 | Etapas posteriores | Pendentes |
+| 8 | Agente determinístico para consultas ao ERP | Implementada; revalidação local relatada pelo autor |
+| 9 | LLM, Tool Calling e MCP | Desenho teórico concluído — ADR-006 |
+| 10 | Avaliação de Go | Resposta teórica concluída — ADR-007 |
+| 11 | Portfólio | Publicado e documentado — NERVA Build |
 
-**Evidências locais:** depois de consolidar a suíte, **17 testes passaram**, segundo a execução relatada pelo autor; 4 testes de regras percorrem 14 cenários de estoque. O ambiente foi recriado com volumes novos usando apenas `docker compose up`, com migrations e seed automáticos. O workflow GitHub Actions está configurado, mas seu resultado remoto ainda não foi confirmado.
+**Evidências locais:** depois de consolidar a suíte, **17 testes passaram**, segundo a execução relatada pelo autor; 4 testes de regras percorrem 14 cenários de estoque. O ambiente foi recriado com volumes novos usando apenas `docker compose up`, com migrations e seed automáticos. O GitHub Actions apresentou falhas remotas no comando de inicialização com `--wait`, apesar de a API e as dependências terem iniciado; o workflow foi corrigido em 06/11 para respeitar serviços one-shot e passou a executar na `main`. O resultado da nova execução precisa ser observado na aba Actions.
 
 As validações locais e limitações técnicas são descritas abaixo e no [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md).
 
@@ -110,7 +112,7 @@ Os campos de cadastro de funcionários e as credenciais iniciais são demonstrat
 
 **Evidências locais (05/11/2026):** com Postman, foram verificados login de admin e funcionário (`200`), acesso sem token (`401`), CRUD de produto e exclusão restrita ao administrador (`403` para funcionário, `204` para admin e `404` após exclusão), cadastro abaixo de 12 unidades (`422`), classificação de estoque, filtros por nome/preço/estoque baixo e paginação. O Redis apresentou uma chave preenchida após `GET /products/{id}` e ausência da chave após o PATCH (consistente com invalidação, mas o TTL também poderia explicar ausência tardia). O RQ recebeu e processou alertas reais, persistidos em `stock_alerts`; a alteração dentro da mesma faixa não gerou alerta. A primeira tentativa de alerta falhou porque a tabela `products` não estava registrada no metadata do worker; o import do modelo foi corrigido e as transições posteriores funcionaram. Após a refatoração, o autor informou **17 testes aprovados** no pytest.
 
-**CI:** `.github/workflows/integration.yml` constrói o Compose, executa novamente init/seed e a suíte. Ainda não há resultado remoto confirmado. **Limitação de histórico:** a exclusão física de produto aciona `ON DELETE CASCADE` e remove alertas associados; isso deve ser considerado para evolução/auditoria.
+**CI:** `.github/workflows/integration.yml` constrói o Compose, executa novamente init/seed e a suíte. A execução antiga falhou no passo `docker compose up --wait`, que tratava inadequadamente os serviços `init`/`ready` de execução única; houve alteração no workflow em 06/11 e nova execução na `main`, cujo resultado deve ser conferido no GitHub Actions. **Limitação de histórico:** a exclusão física de produto aciona `ON DELETE CASCADE` e remove alertas associados; isso deve ser considerado para evolução/auditoria.
 
 Decisões técnicas: [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md).
 
@@ -372,26 +374,193 @@ O desenvolvimento original do NERVA Build foi **pausado por mudanças de localiz
 
 O repositório de portfólio publica um **MVP histórico e não pronto para produção**, com limitações explicitadas em `PORTFOLIO.md`. A preparação para exposição pública envolveu revisão com apoio de IA e remoção do histórico Git original e do segredo JWT padrão. Não executei os testes Maven nem fiz deploy nessa preparação; portanto, não apresento os fluxos como validados em ambiente operacional.
 
-## Próximas etapas e verificações complementares
+## Guia de validação da API — Swagger e Postman (Questões 4, 6 e 8)
 
-### Implementações seguintes
+Este roteiro cobre **somente os fluxos com código executável**. As Questões 1, 2, 3, 9, 10 e 11 são respostas de arquitetura, perfil ou portfólio e não possuem endpoints próprios. A Questão 7 é validada pelo Docker Compose e pelos comandos de infraestrutura ao final. **Não existe Questão 5 no PDF fornecido**: a numeração passa da 4 diretamente para a 6.
 
-- **Questão 8:** escopo do Caminho A concluído e validado localmente conforme a seção acima; alterações incorporadas à `main` pelo PR #2. Ainda cabe confirmar a CI remota.
-- **Questão 9:** desenho teórico concluído no ADR-006: LLM plugável, tool calling, MCP central, guardrails, cache, custo, latência e observabilidade. A implementação real não faz parte desta etapa.
-- **Questão 10:** resposta teórica registrada no ADR-007: postura diante de Go, critérios técnicos, protótipo comparativo, riscos de manutenção e aprendizado em duas semanas; nenhuma implementação Go foi realizada.
-- **Questão 11:** portfólio publicado e reflexão concluída nesta seção, com link ao NERVA Build e delimitação de contribuição, decisões e melhorias.
+### 0. Subir a aplicação e acessar a documentação interativa
 
-### Verificações complementares
+Requisitos: Docker com Compose instalado e portas locais 8000 e 5433 disponíveis. Na raiz do repositório:
 
-As Questões 6 e 7 foram implementadas e validadas nos principais fluxos locais. Ainda cabe:
+```bash
+# Opcional: personalizar segredos e credenciais de demonstração
+cp .env.example .env
+# Ajuste .env antes de compartilhar ou implantar o ambiente.
+docker compose up -d --build
+docker compose ps
+```
 
-- Confirmar o resultado remoto do GitHub Actions.
-- Avaliar, como evolução futura, a preservação dos alertas quando um produto é excluído (`ON DELETE CASCADE`).
-- Conferir o escopo da Questão 5 e manter README e ADRs consistentes com o avanço da prova.
+Aguarde PostgreSQL e Redis ficarem `healthy`, `init` terminar com código 0, `api` ficar `healthy` e `worker` ficar iniciado. `ready` também termina com código 0 após imprimir a mensagem de prontidão — **isso é comportamento esperado**, não uma falha.
 
-Essas verificações não anulam os resultados locais já obtidos. O [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md) registra as limitações técnicas conhecidas.
+- **Swagger UI:** http://localhost:8000/docs
+- **OpenAPI JSON:** http://localhost:8000/openapi.json
+- **Base URL para Postman:** `http://localhost:8000`
+- **Verificação inicial:** `GET http://localhost:8000/health` → `200`, `{"status":"ok"}`.
 
-A documentação distingue o que foi **implementado**, o que foi **validado localmente**, o que foi apenas **decidido conceitualmente** e o que segue **pendente**.
+No **Swagger**, abra a operação, clique em **Try it out**, preencha os campos e clique em **Execute**. Examine **Server response** (código e corpo efetivos), não somente *Example Value* (modelo ilustrativo).
+
+No **Postman**, crie um Environment com a variável `base_url=http://localhost:8000`. Use `{{base_url}}` no início de cada URL, abra a aba **Body → raw → JSON** para requisições JSON e configure o cabeçalho `Content-Type: application/json`. Nos endpoints protegidos, use **Authorization → Bearer Token** e cole o token obtido no passo 1. Para `/auth/login`, a requisição é **x-www-form-urlencoded**, não JSON.
+
+**Atenção:** logins e produtos iniciais são fictícios; credenciais e segredos padrão servem somente para desenvolvimento local. A seed é idempotente: em volumes já usados, os dados podem ter mudado.
+
+### 1. Autenticação JWT — Questão 6
+
+**Swagger:** abra `POST /auth/login` → **Try it out**; no formulário, preencha `username=employee@example.test` e `password=LocalEmployee123!` e execute. Copie `access_token` da resposta HTTP `200`. Clique no botão **Authorize** no topo do Swagger e autentique-se usando as mesmas credenciais no fluxo OAuth2 (ou, se a interface pedir um token Bearer, informe o token obtido). Após autorizar, um cadeado indica as operações protegidas.
+
+**Postman:** `POST {{base_url}}/auth/login` → **Body → x-www-form-urlencoded**:
+
+| Key | Value |
+| --- | --- |
+| `username` | `employee@example.test` |
+| `password` | `LocalEmployee123!` |
+
+Resultado esperado: `200`, JSON com `access_token` e `token_type: "bearer"`. Salve o token na variável de ambiente `token` ou cole em **Authorization → Bearer Token** (sem digitar `Bearer` duas vezes). Para testar como administrador, repita com `admin@example.test` / `LocalAdmin123!` e guarde outro token, `admin_token`.
+
+**Testes rápidos:** `GET /employees/me` com token válido → `200` e perfil do funcionário; `GET /products` sem token → `401`; `POST /auth/login` com senha errada → `401`. Com token de funcionário, `POST /employees` → `403`. Admin pode cadastrar usuário com:
+
+```json
+{
+  "nome": "Avaliador Exemplo",
+  "email": "avaliador.unico@example.test",
+  "senha": "SenhaDemoSegura123!",
+  "role": "employee"
+}
+```
+
+Envie a `POST /employees` com **token de administrador** → `201`; repita com o mesmo e-mail → `409`. O exemplo cria um usuário real na base local de teste.
+
+### 2. CRUD, validações, filtros e paginação — Questão 6
+
+Autentique-se como funcionário (ou admin), usando o token nas requisições protegidas.
+
+**2.1 Cadastrar produto:** `POST /products`, JSON:
+
+```json
+{
+  "nome": "Produto de avaliação API",
+  "preco": "399.90",
+  "quantidade_em_estoque": 20
+}
+```
+
+Esperado: HTTP `201`, incluindo `id`, `nome`, `preco`, `quantidade_em_estoque` e `situacao_estoque: "disponivel"`. **Copie o `id` retornado**; os exemplos abaixo usam `{id}` como marcador a substituir por esse valor. Se já executou o roteiro antes, crie outro nome se desejar identificar facilmente os novos registros.
+
+**2.2 Consultar:** `GET /products/{id}` → `200` com o produto. Repita para testar a leitura cacheada. `GET /products` retorna `items`, `page`, `page_size` e `total`.
+
+**2.3 Filtrar e paginar:** exemplos para copiar no Postman (query params também podem ser preenchidos no Swagger):
+
+```http
+GET /products?page=1&page_size=2
+GET /products?page=2&page_size=2
+GET /products?nome=Produto%20de%20avalia%C3%A7%C3%A3o
+GET /products?preco_min=150&preco_max=500
+GET /products?estoque_baixo=true
+```
+
+Esperado: `200`; página com no máximo dois itens quando `page_size=2`; `total` representa os resultados filtrados; `estoque_baixo=true` inclui os produtos com estoque entre 0 e 12 (conforme regra desta implementação). `preco_min=500&preco_max=100` → `422` por intervalo inválido.
+
+**2.4 Atualizar:** `PATCH /products/{id}`, JSON:
+
+```json
+{"quantidade_em_estoque": 5}
+```
+
+Esperado: `200`, quantidade `5` e `situacao_estoque: "ultimas_unidades"`. A quantidade pode ser atualizada para zero; a restrição de mínimo de 12 vale **somente para o cadastro inicial**.
+
+**2.5 Validar erros:** faça novo `POST /products` com `quantidade_em_estoque: 11` → `422`. Outros exemplos de rejeição: `nome: "12345"`, `preco: "-1"`, ou tentar atualizar preço para valor negativo. JSON incompleto também retorna `422`.
+
+**2.6 Permissões de exclusão:** `DELETE /products/{id}` com **token de funcionário** → `403`. Com **token de administrador** → `204` sem corpo. Um `GET /products/{id}` posterior → `404`. Faça a exclusão **por último**, para não impedir os testes de cache, estoque e agente. A exclusão de produto **apaga os alertas históricos vinculados** por `ON DELETE CASCADE`, limitação conhecida registrada no ADR-004.
+
+### 3. Cache Redis e worker RQ — Questão 6 (efeitos observáveis)
+
+**Cache:** usando um produto existente, execute `GET /products/{id}` e depois `PATCH /products/{id}` para alterar preço ou estoque. Um novo `GET` deve retornar os valores atualizados. A API usa cache-aside apenas no detalhe `GET /products/{id}` e invalida a chave na alteração. Para **confirmar a chave no Redis**, abra outro terminal:
+
+```bash
+docker compose exec redis redis-cli GET erp:products:SEU_ID
+```
+
+Substitua `SEU_ID` pelo ID, sem chaves. Faça a leitura logo após o `GET`: o TTL padrão é 60 segundos. Após `PATCH`, verifique novamente; a chave normalmente estará ausente. A ausência isolada depois de muito tempo **não comprova invalidação**, pois o TTL também pode ter expirado.
+
+**Fila e alerta persistido:** para testar, crie produto com estoque inicial `20`; altere-o por `PATCH /products/{id}` para `5`. O Service salva a alteração e enfileira uma tarefa RQ porque houve piora da faixa de estoque. Aguarde alguns segundos, então chame:
+
+```http
+GET /stock/alerts?limit=20
+```
+
+Com Bearer token, espere `200` e procure um registro com `product_id` igual ao ID criado, `previous_quantity: 20`, `current_quantity: 5`, `previous_status: "disponivel"` e `current_status: "ultimas_unidades"`. **A resposta do PATCH não é a confirmação de que a tarefa terminou**: a API e o worker executam separadamente. Se não aparecer, aguarde e consulte de novo; verifique `docker compose logs worker --tail=100`. Uma atualização dentro da mesma faixa não deve criar outro alerta.
+
+A tarefa persiste o evento na tabela `stock_alerts`, além de registrar log. A gravação em PostgreSQL e publicação no Redis **não são atômicas**; falha no enqueue pode deixar uma atualização de estoque sem alerta, limitação registrada na documentação.
+
+### 4. Endpoint assíncrono de integrações simuladas — Questão 4
+
+**Sem JWT:** `GET /orders/12345/summary` no Swagger ou Postman. Use qualquer identificador textual no lugar de `12345`: o código **não busca um pedido real**; envia o identificador aos mocks.
+
+Esperado no cenário padrão: HTTP `200`, `order_id: "12345"`, `status: "complete"`, entradas `cliente`, `estoque` e `financeiro` em `data`, três `services` com `"success"` e `warnings: []`. As chamadas são concorrentes via `asyncio.gather`. O código tem timeout individual e retry para falhas transitórias, com degradação parcial (`200` / `partial`) ou indisponibilidade total (`503` / `unavailable`).
+
+**Limite do teste manual:** o cenário padrão de `GET` não oferece parâmetros para induzir timeout ou falhas dos mocks. Portanto, **não se consegue demonstrar os cenários `partial`, `503` e retries somente alterando a URL no Postman/Swagger**. Esses casos são verificados com mocks substituídos nos testes automatizados em `tests/test_order_summary.py`. Não há integração real com Financeiro ou Clientes.
+
+### 5. Agente determinístico de consultas ao ERP — Questão 8
+
+Requer JWT do passo 1. No Swagger abra **POST /agent/query → Try it out**; no Postman use **POST {{base_url}}/agent/query**, **Authorization → Bearer Token**, **Body → raw → JSON**.
+
+Experimente:
+
+```json
+{"pergunta":"Quais produtos estão com estoque abaixo de 10 unidades?"}
+```
+
+Esperado: `200`; `filtros` com campo `quantidade_em_estoque`, operador `<`, valor `10`; `situacao` `encontrado` ou `sem_resultados` conforme os dados; `total`, `produtos` (até 50) e `limite: 50`. Na seed inicial intacta, normalmente há 3 correspondências (Mouse, Headset, Webcam).
+
+Experimente também:
+
+```json
+{"pergunta":"Quero produtos com preço acima de 200 reais"}
+```
+
+Na seed inicial intacta, normalmente há 4 registros. Para consulta válida **sem resultado**, teste `{"pergunta":"Preço abaixo de 100"}` — espere `200`, `situacao: "sem_resultados"`, `total: 0` e `produtos: []`, desde que a base não tenha produtos novos abaixo desse preço. Para entrada fora do escopo, `{"pergunta":"Qual produto é o mais caro?"}` → `422` (ranking não suportado). Duas condições unidas por `e`, como estoque abaixo de 5 e preço acima de 100, também retornam `422`. Sem token → `401`.
+
+**Esta versão não usa LLM remoto:** interpreta uma única condição numérica explícita de estoque ou preço, consulta PostgreSQL pelo Repository e devolve JSON estruturado.
+
+### 6. Testes automatizados e verificação do Docker — Questões 4, 6, 7 e 8
+
+Após `docker compose up -d --build`, execute:
+
+```bash
+# Toda a suíte, incluindo a integração com banco/Redis/worker:
+docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q -p no:cacheprovider
+
+# Somente os testes do agente (usam SQLite e overrides de dependências):
+docker compose run --rm --no-deps -v "$PWD/tests:/srv/app/tests:ro" api python -m pytest -q -p no:cacheprovider tests/test_agent.py
+
+# Infraestrutura e logs úteis:
+docker compose ps
+docker compose logs --tail=100 api worker init
+docker compose down
+```
+
+Os testes de integração com `PostgreSQL`, `Redis` e `RQ` exigem os serviços ativos. O Dockerfile não embute a pasta `tests/`; a montagem no comando é intencional. Não confunda resultados relatados de execuções locais anteriores com uma execução atual da CI.
+
+### 7. AWS, frontend e escopo não implementado
+
+O **PDF lista AWS na stack esperada**, mas não solicita provisionar recursos AWS nem fazer um deploy na nuvem em uma questão específica. Não há serviço AWS configurado neste repositório. Para evoluir o projeto, eu consideraria imagens Docker em ECR, API e worker em ECS/Fargate, PostgreSQL em RDS, Redis em ElastiCache, secrets no Secrets Manager e logs/métricas no CloudWatch, avaliando custos, IAM e networking. **São propostas futuras, não entregas realizadas.**
+
+O enunciado apresenta `React/Vite (front, se aplicável)`. **Não exige construir um frontend para as questões práticas**, que focam a API. Optei por concentrar o tempo disponível em regras de negócio, testes, infraestrutura e documentação. O Swagger UI já permite testar toda a API implementada; um painel React/Vite poderia ser acrescentado depois, mas **não existe neste repositório**.
+
+O PDF pula da **Questão 4 diretamente para a Questão 6**. Não existe uma Questão 5 para implementar no documento recebido; portanto, não há pendência de código a respeito dela.
+
+## Status final e verificações complementares
+
+As **Questões 1, 2, 3, 9, 10 e 11** foram respondidas teoricamente ou por portfólio. As **Questões 4, 6 e 8** possuem endpoints executáveis documentados no guia acima. A **Questão 7** entrega Dockerfile, Compose, healthchecks, migrations e seed automáticos. **Questão 5 não consta no PDF.**
+
+### Verificações feitas e limitações conscientes
+
+- **CI remota:** as execuções antigas do GitHub Actions falharam durante o comando `docker compose up -d --build --wait`. O log mostrava API, PostgreSQL e Redis saudáveis, além de `ready` encerrado com código 0. Ajustei o workflow para inicializar em modo detached e verificar a prontidão com `docker compose run --rm ready`, e incluí disparo por push na `main`. A nova execução deve ser observada em [Actions](https://github.com/felipemir/prova-backend-erp-ia-Robson/actions); não declaro sucesso sem conferir a conclusão.
+- **Alertas e exclusão:** `ON DELETE CASCADE` apaga os alertas associados ao produto excluído. A API atual funciona conforme essa regra, porém **perder histórico de auditoria é uma limitação real**. Migrar para exclusão lógica e/ou preservar snapshots seria evolução futura; não altero o domínio antes da entrega sem migration e testes adequados.
+- **Limite entre transação e fila:** persistir o estoque e enfileirar alerta no Redis não é uma operação atômica. Uma Transactional Outbox é proposta futura, não implementada.
+- **AWS e frontend:** são melhorias opcionais para este enunciado; o frontend não é exigido (texto: `front, se aplicável`) e não existe deploy AWS neste projeto.
+- **Testes locais:** resultados registrados previamente no README/ADRs foram relatados pelo autor. O guia acima permite ao avaliador reproduzir os cenários e executar a suíte; não afirmo uma nova execução local nesta revisão.
+
+As limitações da gestão de produtos e estoque estão detalhadas no [ADR-004](docs/adr/ADR-004-produtos-estoque-autenticacao-inicializacao.md), sem confundir funcionalidade implementada com melhoria planejada.
 
 ## Uso de IA
 
