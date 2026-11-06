@@ -20,6 +20,14 @@ Entretanto, disposição para aprender não equivale a estar pronto para assumir
 
 **Decisão:** aceitar o desafio, aprendendo e contribuindo de forma incremental, com atenção à qualidade e apoio técnico quando necessário.
 
+### Meu raciocínio ao aprender uma linguagem que ainda não domino
+
+Distingo **capacidade de aprender e entregar** de **justificativa para escolher uma tecnologia**. Posso aceitar uma tarefa em Go sem alegar experiência anterior: começaria pelas regras de negócio, pelo formato dos eventos e pelos critérios de aceitação. Em seguida, aprenderia os recursos da linguagem necessários para uma entrega pequena, testável e revisada. Essa abordagem evita passar semanas só estudando sintaxe sem produzir feedback técnico.
+
+Se a equipe já decidiu usar Go por razões consistentes, meu papel é contribuir para a execução, aprender com o time e evoluir gradualmente a responsabilidade. Se ainda estamos decidindo entre Go e Python, primeiro compararia evidências e alternativas. Assim, **estar aberto à linguagem não significa escolher Go por entusiasmo**, nem usar a falta de experiência como motivo para rejeitá-la.
+
+Um exemplo de sequência de aprendizado e entrega é: compreender um evento e seus efeitos no estoque → definir entradas, saídas e condições de erro → implementar uma versão simples em Go com teste automatizado → obter revisão de código → adicionar tratamento de duplicações, timeout e cancelamento → comparar resultados com o consumidor Python. Eu só proporia operação crítica depois de demonstrar as garantias necessárias e entender como a equipe sustentaria o serviço.
+
 ## 3. Go é razoável para um processador de eventos?
 
 **Sim, pode ser uma escolha razoável**, especialmente para um consumidor com alta concorrência, muitas operações simultâneas, forte exigência de latência e eficiência de CPU/memória. Go oferece goroutines, channels, mecanismos de sincronização, compilação para binário e ferramentas maduras de testes e profiling.
