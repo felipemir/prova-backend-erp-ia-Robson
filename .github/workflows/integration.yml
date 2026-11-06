@@ -3,6 +3,7 @@ name: ERP integration
 on:
   push:
     branches:
+      - main
       - feat/products-stock-crud
   workflow_dispatch:
 
@@ -13,7 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and start the environment
-        run: docker compose up -d --build --wait
+        run: |
+          docker compose up -d --build
+          # 'init' e 'ready' são serviços one-shot; --wait pode retornar falha quando terminam com 0.
+          # 'ready' aguarda API healthy e worker started e sai com código 0.
+          docker compose run --rm ready
       - name: Verify migrations and idempotent seed
         run: |
           docker compose run --rm init
